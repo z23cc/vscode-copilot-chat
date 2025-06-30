@@ -113,15 +113,15 @@ export function computeContext(session: TestSession, document: string, position:
 	const result: ContextResult = new ContextResult(new TokenBudget(7 * 1024));
 	const program = session.service.getProgram();
 	if (program === undefined) {
-		return result.items.filter((item) => item.kind === contextKind);
+		return [];
 	}
 	const sourceFile = program.getSourceFile(document);
 	if (sourceFile === undefined) {
-		return result.items.filter((item) => item.kind === contextKind);
+		return [];
 	}
 	const pos = sourceFile.getPositionOfLineAndCharacter(position.line, position.character);
 	_computeContext(result, session.session, session.service, document, pos, undefined, [], new NullCancellationToken());
-	return result.items.filter((item) => item.kind === contextKind);
+	return result.items().filter((item) => item.kind === contextKind);
 }
 
 class LanguageServiceTestSession extends SingleLanguageServiceSession {

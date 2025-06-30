@@ -2717,20 +2717,6 @@
 							"experimental"
 						]
 					},
-					"github.copilot.chat.completionContext.typescript.mode": {
-						"type": "string",
-						"scope": "resource",
-						"default": "off",
-						"enum": [
-							"off",
-							"sidecar",
-							"on"
-						],
-						"tags": [
-							"experimental"
-						],
-						"markdownDescription": "%github.copilot.chat.completionContext.typescript.mode%"
-					},
 					"github.copilot.chat.languageContext.typescript.enabled": {
 						"type": "boolean",
 						"default": false,

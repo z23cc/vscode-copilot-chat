@@ -7,7 +7,7 @@ import TS from './typescript';
 const ts = TS();
 
 import { ProgramContext, RecoverableError, type ComputeContextSession, type SeenSymbols, type SnippetProvider } from './contextProvider';
-import { CodeSnippet, type CacheInfo, type SnippetKind, type SpeculativeKind } from './protocol';
+import { CodeSnippet, type SpeculativeKind } from './protocol';
 import { Symbols } from './typescripts';
 
 namespace Nodes {
@@ -666,12 +666,12 @@ export class CodeSnippetBuilder extends ProgramContext implements SnippetProvide
 		return this.lines.length === 0 || this.source === undefined;
 	}
 
-	public snippet(snippetKind: SnippetKind, priority: number, speculativeKind: SpeculativeKind, cache?: CacheInfo | undefined): CodeSnippet {
+	public snippet(key: string | undefined, priority: number, speculativeKind: SpeculativeKind): CodeSnippet {
 		if (this.source === undefined) {
 			throw new RecoverableError('No source', RecoverableError.NoSourceFile);
 		}
 		this.additionalSources.delete(this.source);
-		return CodeSnippet.create(this.source, this.additionalSources.size === 0 ? undefined : [...this.additionalSources], this.lines.join('\n'), snippetKind, priority, speculativeKind, cache);
+		return CodeSnippet.create(key, this.source, this.additionalSources.size === 0 ? undefined : [...this.additionalSources], this.lines.join('\n'), priority, speculativeKind);
 	}
 
 	public addDeclaration(declaration: tt.Declaration): void {

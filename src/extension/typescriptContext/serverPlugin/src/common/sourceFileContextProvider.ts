@@ -6,10 +6,10 @@ import type tt from 'typescript/lib/tsserverlibrary';
 import TS from './typescript';
 const ts = TS();
 
-import { TypeOfExpressionComputeRunnable, TypeOfImportsComputeRunnable, TypeOfLocalsComputeRunnable, TypesOfNeighborFilesComputeRunnable } from './baseContextProviders';
+import { TypeOfExpressionRunnable, TypeOfImportsRunnable, TypeOfLocalsRunnable, TypesOfNeighborFilesRunnable } from './baseContextProviders';
 import { CodeSnippetBuilder } from './code';
-import { ComputeCost, ContextComputeRunnable, ContextProvider, type ComputeContextSession, type ContextComputeRunnableCollector, type ContextResult, type ProviderComputeContext, type RequestContext } from './contextProvider';
-import { CompletionContextKind, EmitMode, Priorities, SnippetKind, SpeculativeKind, type CacheScope } from './protocol';
+import { AbstractContextRunnable, ComputeCost, ContextProvider, ContextResult, type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext, type RunnableResult } from './contextProvider';
+import { EmitMode, Priorities, SpeculativeKind, type CacheInfo, type CacheScope } from './protocol';
 import tss, { Symbols, type TokenInfo } from './typescripts';
 
 
@@ -21,7 +21,7 @@ export type SymbolsInScope = {
 	modules: { alias: tt.Symbol; real: tt.Symbol }[];
 };
 
-export class GlobalSymbolsInScopeRunnable extends ContextComputeRunnable {
+export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
 
 	private readonly tokenInfo: TokenInfo;
 	private readonly symbolsToQuery: tt.SymbolFlags;
@@ -34,8 +34,12 @@ export class GlobalSymbolsInScopeRunnable extends ContextComputeRunnable {
 		this.cacheScope = cacheScope;
 	}
 
-	public override compute(result: ContextResult, token: tt.CancellationToken): void {
-		token.throwIfCancellationRequested();
+	protected override createRunnableResult(result: ContextResult): RunnableResult {
+		const cacheInfo: CacheInfo | undefined = this.cacheScope !== undefined ? { emitMode: EmitMode.ClientBasedOnTimeout, scope: this.cacheScope } : undefined;
+		return result.createRunnableResult(GlobalSymbolsInScopeRunnable.name, this.context, cacheInfo);
+	}
+
+	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
 		const program = this.getProgram();
 		const symbols = this.symbols;
 		const seen = this.getSeenSymbols();
@@ -47,17 +51,17 @@ export class GlobalSymbolsInScopeRunnable extends ContextComputeRunnable {
 		// Add functions in scope
 		for (const func of inScope.functions.real) {
 			token.throwIfCancellationRequested();
-			const [handled, cacheInfo] = this.handleSymbolIfCachedOrSeen(result, func, EmitMode.ClientBasedOnTimeout, this.cacheScope);
+			const [handled, key] = this.handleSymbolIfSeenOrCached(result, func);
 			if (handled) {
 				continue;
 			}
 			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
 			snippetBuilder.addFunctionSymbol(func);
-			result.addSnippet(snippetBuilder, SnippetKind.GeneralScope, this.priority, SpeculativeKind.emit, cacheInfo);
+			result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit);
 			seen.add(func);
 		}
 
-		if (result.tokenBudget.isExhausted()) {
+		if (result.isTokenBudgetExhausted()) {
 			return;
 		}
 
@@ -65,20 +69,20 @@ export class GlobalSymbolsInScopeRunnable extends ContextComputeRunnable {
 		for (const { alias, real } of inScope.functions.aliased) {
 			token.throwIfCancellationRequested();
 
-			const [handled, cacheInfo] = this.handleSymbolIfCachedOrSeen(result, real, EmitMode.ClientBasedOnTimeout, this.cacheScope);
+			const [handled, key] = this.handleSymbolIfSeenOrCached(result, real);
 			if (handled || seen.has(alias)) {
 				continue;
 			}
 			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
 			snippetBuilder.addFunctionSymbol(real, alias.getName());
-			if (!result.addSnippet(snippetBuilder, SnippetKind.GeneralScope, this.priority, SpeculativeKind.emit, cacheInfo, true)) {
+			if (!result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit, true)) {
 				break;
 			}
 			seen.add(alias);
 			seen.add(real);
 		}
 
-		if (result.tokenBudget.isExhausted()) {
+		if (result.isTokenBudgetExhausted()) {
 			return;
 		}
 
@@ -87,13 +91,13 @@ export class GlobalSymbolsInScopeRunnable extends ContextComputeRunnable {
 		for (const { alias, real } of inScope.modules) {
 			token.throwIfCancellationRequested();
 
-			const [handled, cacheInfo] = this.handleSymbolIfCachedOrSeen(result, real, EmitMode.ClientBasedOnTimeout, this.cacheScope);
+			const [handled, key] = this.handleSymbolIfSeenOrCached(result, real);
 			if (handled || seen.has(alias)) {
 				continue;
 			}
 			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
 			snippetBuilder.addModuleSymbol(real, alias.getName());
-			if (!result.addSnippet(snippetBuilder, SnippetKind.GeneralScope, this.priority, SpeculativeKind.emit, cacheInfo, true)) {
+			if (!result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit, true)) {
 				break;
 			}
 			seen.add(alias);
@@ -158,13 +162,13 @@ export class SourceFileContextProvider extends ContextProvider {
 	public override readonly isCallableProvider: boolean;
 
 	constructor(tokenInfo: tss.TokenInfo, computeInfo: ProviderComputeContext) {
-		super(CompletionContextKind.SourceFile, ts.SymbolFlags.Function);
+		super(ts.SymbolFlags.Function);
 		this.tokenInfo = tokenInfo;
 		this.computeInfo = computeInfo;
 		this.isCallableProvider = true;
 	}
 
-	public provide(result: ContextComputeRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {
+	public provide(result: ContextRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {
 		token.throwIfCancellationRequested();
 		const symbolsToQuery = this.computeInfo.getSymbolsToQuery();
 		const cacheScope = this.computeInfo.getCallableCacheScope();
@@ -174,12 +178,12 @@ export class SourceFileContextProvider extends ContextProvider {
 		if (!this.computeInfo.isFirstCallableProvider(this)) {
 			return;
 		}
-		result.addPrimary(new TypeOfLocalsComputeRunnable(session, languageService, context, this.tokenInfo, new Set(), undefined));
-		const runnable = TypeOfExpressionComputeRunnable.create(session, languageService, context, this.tokenInfo, token);
+		result.addPrimary(new TypeOfLocalsRunnable(session, languageService, context, this.tokenInfo, new Set(), undefined));
+		const runnable = TypeOfExpressionRunnable.create(session, languageService, context, this.tokenInfo, token);
 		if (runnable !== undefined) {
 			result.addPrimary(runnable);
 		}
-		result.addSecondary(new TypeOfImportsComputeRunnable(session, languageService, context, this.tokenInfo, new Set(), undefined));
-		result.addTertiary(new TypesOfNeighborFilesComputeRunnable(session, languageService, context, this.tokenInfo, undefined));
+		result.addSecondary(new TypeOfImportsRunnable(session, languageService, context, this.tokenInfo, new Set(), undefined));
+		result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo));
 	}
 }

@@ -60,14 +60,12 @@ const computeContextHandler = (request: ComputeContextRequest): ComputeContextHa
 
 	const computeStart = Date.now();
 	const tokenBudget = new TokenBudget(typeof args.tokenBudget === 'number' ? args.tokenBudget : 7 * 1024);
-	const knownContextItems = args.knownContextItems ?? [];
-	const computationStates = args.computationStates ?? [];
+	const cachedRunnableResults = args.cachedRunnableResults ?? [];
 	const cancellationToken = new CancellationTokenWithTimer(languageServiceHost?.getCancellationToken ? languageServiceHost.getCancellationToken() : undefined, startTime, timeBudget, computeContextSession?.host.isDebugging() ?? false);
 	const result: ContextResult = new ContextResult(tokenBudget);
 	try {
 		cancellationToken.throwIfCancellationRequested();
-		computeContextSession!.applyComputationStates(computationStates);
-		computeContext(result, computeContextSession!, languageService, file, pos, args.neighborFiles, knownContextItems, cancellationToken);
+		computeContext(result, computeContextSession!, languageService, file, pos, args.neighborFiles, cachedRunnableResults, cancellationToken);
 	} catch (error) {
 		if (!(error instanceof ts.OperationCanceledException) && !(error instanceof TokenBudgetExhaustedError)) {
 			if (error instanceof Error) {
@@ -79,7 +77,7 @@ const computeContextHandler = (request: ComputeContextRequest): ComputeContextHa
 	}
 	const endTime = Date.now();
 	result.addTimings(endTime - totalStart, endTime - computeStart);
-	return { response: { items: result.items, timedOut: cancellationToken.isTimedOut(), tokenBudgetExhausted: tokenBudget.isExhausted() }, responseRequired: true };
+	return { response: result.toJson(), responseRequired: true };
 };
 
 export function create(info: tt.server.PluginCreateInfo): tt.LanguageService {

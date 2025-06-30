@@ -6,10 +6,10 @@ import type tt from 'typescript/lib/tsserverlibrary';
 import TS from './typescript';
 const ts = TS();
 
-import { FunctionLikeContextComputeRunnable, FunctionLikeContextProvider } from './baseContextProviders';
+import { FunctionLikeContextProvider, FunctionLikeContextRunnable } from './baseContextProviders';
 import { CodeSnippetBuilder } from './code';
-import { ComputeCost, ContextComputeRunnable, RecoverableError, Search, type ComputeContextSession, type ContextComputeRunnableCollector, type ContextResult, type ProviderComputeContext, type RequestContext, type SeenSymbols } from './contextProvider';
-import { CompletionContextKind, EmitMode, Priorities, SnippetKind, SpeculativeKind, type CacheScope, type Range } from './protocol';
+import { AbstractContextRunnable, ComputeCost, ContextResult, RecoverableError, Search, type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext, type RunnableResult, type SeenSymbols } from './contextProvider';
+import { EmitMode, Priorities, SpeculativeKind, type CacheInfo, type Range } from './protocol';
 import tss, { ClassDeclarations, Declarations, Symbols, Traversal, type StateProvider, type TokenInfo } from './typescripts';
 
 abstract class ClassPropertyBlueprintSearch<T extends tt.MethodDeclaration | tt.ConstructorDeclaration> extends Search<tt.ClassDeclaration> {
@@ -423,14 +423,19 @@ class FindMethodInHierarchySearch extends MethodBlueprintSearch {
 	}
 }
 
-abstract class SimilarPropertyContextRunnable<T extends tt.MethodDeclaration | tt.ConstructorDeclaration> extends FunctionLikeContextComputeRunnable<T> {
+abstract class SimilarPropertyRunnable<T extends tt.MethodDeclaration | tt.ConstructorDeclaration> extends FunctionLikeContextRunnable<T> {
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, declaration: T, priority: number = Priorities.Blueprints) {
 		super(session, languageService, context, declaration, priority, ComputeCost.High);
 	}
 
-	public override compute(result: ContextResult, token: tt.CancellationToken): void {
-		token.throwIfCancellationRequested();
+	protected override createRunnableResult(result: ContextResult): RunnableResult {
+		const scope = this.getCacheScope();
+		const cacheInfo: CacheInfo | undefined = scope !== undefined ? { emitMode: EmitMode.ClientBased, scope } : undefined;
+		return result.createRunnableResult(SimilarPropertyRunnable.name, this.context, cacheInfo);
+	}
+
+	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
 		const search = this.createSearch(token);
 		if (search !== undefined) {
 			const [program, candidate] = this.session.run(search, this.context, token);
@@ -446,7 +451,7 @@ abstract class SimilarPropertyContextRunnable<T extends tt.MethodDeclaration | t
 				const sourceFile = this.declaration.getSourceFile();
 				const snippetBuilder = new CodeSnippetBuilder(this.session, this.context.getSymbols(program), sourceFile, seen);
 				snippetBuilder.addDeclaration(candidate);
-				result.addSnippet(snippetBuilder, SnippetKind.Blueprint, this.priority, SpeculativeKind.emit, undefined);
+				result.addSnippet(snippetBuilder, undefined, this.priority, SpeculativeKind.emit);
 				seen.add(symbol);
 			}
 		}
@@ -455,7 +460,7 @@ abstract class SimilarPropertyContextRunnable<T extends tt.MethodDeclaration | t
 	protected abstract createSearch(token: tt.CancellationToken): Search<tt.ClassDeclaration> | undefined;
 }
 
-class SimilarMethodContextRunnable extends SimilarPropertyContextRunnable<tt.MethodDeclaration> {
+class SimilarMethodRunnable extends SimilarPropertyRunnable<tt.MethodDeclaration> {
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, declaration: tt.MethodDeclaration) {
 		super(session, languageService, context, declaration);
@@ -472,8 +477,8 @@ abstract class ClassPropertyContextProvider<T extends tt.MethodDeclaration | tt.
 	public override readonly isCallableProvider: boolean;
 
 
-	constructor(contextKind: CompletionContextKind, symbolsToQuery: tt.SymbolFlags | undefined, declaration: T, tokenInfo: TokenInfo, computeContext: ProviderComputeContext) {
-		super(contextKind, symbolsToQuery, declaration, tokenInfo, computeContext);
+	constructor(symbolsToQuery: tt.SymbolFlags | undefined, declaration: T, tokenInfo: TokenInfo, computeContext: ProviderComputeContext) {
+		super(symbolsToQuery, declaration, tokenInfo, computeContext);
 		this.declaration = declaration;
 		this.isCallableProvider = true;
 	}
@@ -507,7 +512,7 @@ abstract class ClassPropertyContextProvider<T extends tt.MethodDeclaration | tt.
 	}
 }
 
-class PropertiesTypeContextRunnable extends ContextComputeRunnable {
+class PropertiesTypeRunnable extends AbstractContextRunnable {
 
 	private readonly declaration: tt.MethodDeclaration | tt.ConstructorDeclaration;
 
@@ -516,7 +521,12 @@ class PropertiesTypeContextRunnable extends ContextComputeRunnable {
 		this.declaration = declaration;
 	}
 
-	public compute(result: ContextResult, token: tt.CancellationToken): void {
+	protected override createRunnableResult(result: ContextResult): RunnableResult {
+		const cacheInfo: CacheInfo | undefined = { emitMode: EmitMode.ClientBased, scope: this.createCacheScope(this.declaration) };
+		return result.createRunnableResult(PropertiesTypeRunnable.name, this.context, cacheInfo);
+	}
+
+	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
 		// We could consider object literals here as well. However they don't usually have a this
 		// and all things a public in an literal. So we skip them for now.
 		const containerDeclaration = this.declaration.parent;
@@ -535,14 +545,13 @@ class PropertiesTypeContextRunnable extends ContextComputeRunnable {
 		if (containerSymbol === undefined || !Symbols.isClass(containerSymbol)) {
 			return;
 		}
-		const cacheScope = this.createCacheScope(this.declaration);
 		if (containerSymbol.members !== undefined) {
 			for (const member of containerSymbol.members.values()) {
 				token.throwIfCancellationRequested();
 				if (member === methodSymbol) {
 					continue;
 				}
-				if (!this.handleSymbol(result, member, symbols, seen, ts.ModifierFlags.Private | ts.ModifierFlags.Protected, cacheScope)) {
+				if (!this.handleSymbol(result, member, symbols, seen, ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) {
 					return;
 				}
 			}
@@ -555,14 +564,14 @@ class PropertiesTypeContextRunnable extends ContextComputeRunnable {
 			}
 			for (const member of type.members.values()) {
 				token.throwIfCancellationRequested();
-				if (!this.handleSymbol(result, member, symbols, seen, ts.ModifierFlags.Protected, cacheScope)) {
+				if (!this.handleSymbol(result, member, symbols, seen, ts.ModifierFlags.Protected)) {
 					return;
 				}
 			}
 		}
 	}
 
-	private handleSymbol(result: ContextResult, symbol: tt.Symbol, symbols: Symbols, seen: SeenSymbols, flags: tt.ModifierFlags, cacheScope: CacheScope): boolean {
+	private handleSymbol(result: RunnableResult, symbol: tt.Symbol, symbols: Symbols, seen: SeenSymbols, flags: tt.ModifierFlags): boolean {
 		if (seen.has(symbol) || !Symbols.hasModifierFlags(symbol, flags)) {
 			return true;
 		}
@@ -573,11 +582,11 @@ class PropertiesTypeContextRunnable extends ContextComputeRunnable {
 			if (typeSymbol === undefined) {
 				continue;
 			}
-			const [handled, cacheInfo] = this.handleSymbolIfCachedOrSeen(result, typeSymbol, EmitMode.ClientBased, cacheScope);
+			const [handled, key] = this.handleSymbolIfSeenOrCached(result, typeSymbol);
 			if (!handled) {
 				const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
 				snippetBuilder.addTypeSymbol(typeSymbol, name);
-				continueResult = continueResult && result.addSnippet(snippetBuilder, SnippetKind.Completion, this.priority, SpeculativeKind.emit, cacheInfo, true);
+				continueResult = continueResult && result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit, true);
 				seen.add(typeSymbol);
 			}
 			if (!continueResult) {
@@ -613,7 +622,7 @@ class PropertiesTypeContextRunnable extends ContextComputeRunnable {
 			for (const signature of signatures) {
 				const typeSymbol = signature.getReturnType().symbol;
 				if (typeSymbol === undefined) {
-					yield PropertiesTypeContextRunnable.NoEmitData;
+					yield PropertiesTypeRunnable.NoEmitData;
 				}
 				let name: string | undefined = undefined;
 				const declaration = signature.getDeclaration();
@@ -632,15 +641,15 @@ class PropertiesTypeContextRunnable extends ContextComputeRunnable {
 export class MethodContextProvider extends ClassPropertyContextProvider<tt.MethodDeclaration> {
 
 	constructor(declaration: tt.MethodDeclaration, tokenInfo: TokenInfo, computeContext: ProviderComputeContext) {
-		super(declaration.body === undefined || declaration.body.statements.length === 0 ? CompletionContextKind.WholeMethod : CompletionContextKind.Method, ts.SymbolFlags.Function, declaration, tokenInfo, computeContext);
+		super(ts.SymbolFlags.Function, declaration, tokenInfo, computeContext);
 	}
 
-	public override provide(result: ContextComputeRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {
+	public override provide(result: ContextRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {
 		if (session.enableBlueprintSearch()) {
-			result.addPrimary(new SimilarMethodContextRunnable(session, languageService, context, this.declaration));
+			result.addPrimary(new SimilarMethodRunnable(session, languageService, context, this.declaration));
 		}
 		super.provide(result, session, languageService, context, token);
-		result.addSecondary(new PropertiesTypeContextRunnable(session, languageService, context, this.declaration));
+		result.addSecondary(new PropertiesTypeRunnable(session, languageService, context, this.declaration));
 	}
 }
 
@@ -668,7 +677,7 @@ class ConstructorBlueprintSearch extends FindInSiblingClassSearch<tt.Constructor
 	}
 }
 
-class SimilarConstructorContextRunnable extends SimilarPropertyContextRunnable<tt.ConstructorDeclaration> {
+class SimilarConstructorRunnable extends SimilarPropertyRunnable<tt.ConstructorDeclaration> {
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, declaration: tt.ConstructorDeclaration) {
 		super(session, languageService, context, declaration);
@@ -696,12 +705,12 @@ class SimilarConstructorContextRunnable extends SimilarPropertyContextRunnable<t
 export class ConstructorContextProvider extends ClassPropertyContextProvider<tt.ConstructorDeclaration> {
 
 	constructor(declaration: tt.ConstructorDeclaration, tokenInfo: TokenInfo, computeContext: ProviderComputeContext) {
-		super(declaration.body === undefined || declaration.body.statements.length === 0 ? CompletionContextKind.WholeConstructor : CompletionContextKind.Constructor, ts.SymbolFlags.Function, declaration, tokenInfo, computeContext);
+		super(ts.SymbolFlags.Function, declaration, tokenInfo, computeContext);
 	}
 
-	public override provide(result: ContextComputeRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {
+	public override provide(result: ContextRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {
 		if (session.enableBlueprintSearch()) {
-			result.addPrimary(new SimilarConstructorContextRunnable(session, languageService, context, this.declaration));
+			result.addPrimary(new SimilarConstructorRunnable(session, languageService, context, this.declaration));
 		}
 		super.provide(result, session, languageService, context, token);
 	}

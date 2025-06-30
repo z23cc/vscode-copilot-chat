@@ -72,6 +72,7 @@ export enum KnownSources {
 	unknown = 'unknown',
 	sideCar = 'sideCar',
 	completion = 'completion',
+	selection = 'selection',
 	nes = 'nes',
 	chat = 'chat',
 	fix = 'fix'
@@ -114,6 +115,15 @@ export interface ILanguageContextService {
 	isActivated(documentOrLanguageId: vscode.TextDocument | string): Promise<boolean>;
 
 	/**
+	 * Populates the cache with context information for the given document and position.
+	 *
+	 * @param document The document to populate the cache for.
+	 * @param position The position in the document to populate the cache for.
+	 * @param context The context for the request.
+	 */
+	populateCache(document: vscode.TextDocument, position: vscode.Position, context: RequestContext): Promise<void>;
+
+	/**
 	 * Retrieves the context for the given document and position.
 	 *
 	 * @param document The document to retrieve the context for.
@@ -137,7 +147,7 @@ export interface ILanguageContextService {
 	 * @param context The context for the request.
 	 * @returns An array of `ContextItem` or `undefined`.
 	 */
-	getContextOnTimeout?(document: vscode.TextDocument, position: vscode.Position, context: RequestContext): readonly ContextItem[] | undefined;
+	getContextOnTimeout(document: vscode.TextDocument, position: vscode.Position, context: RequestContext): readonly ContextItem[] | undefined;
 }
 
 class EmptyAsyncIterable<T> implements AsyncIterable<T> {
@@ -147,5 +157,7 @@ class EmptyAsyncIterable<T> implements AsyncIterable<T> {
 export const NullLanguageContextService: ILanguageContextService = {
 	_serviceBrand: undefined,
 	isActivated: async () => false,
+	populateCache: async () => { },
 	getContext: () => new EmptyAsyncIterable<ContextItem>(),
+	getContextOnTimeout: () => [],
 };

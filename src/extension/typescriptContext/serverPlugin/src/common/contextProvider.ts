@@ -808,17 +808,20 @@ export abstract class AbstractContextRunnable implements ContextRunnable {
 	private readonly program: tt.Program | undefined;
 	protected readonly context: RequestContext;
 	protected readonly symbols: Symbols;
+
+	public readonly id: string;
 	public readonly priority: number;
 	public readonly cost: ComputeCost;
 
 	private result: RunnableResult | undefined;
 
-	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, priority: number, cost: ComputeCost) {
+	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, id: string, priority: number, cost: ComputeCost) {
 		this.session = session;
 		this.languageService = languageService;
 		this.program = languageService.getProgram();
 		this.context = context;
 		this.symbols = context.getSymbols(this.getProgram());
+		this.id = id;
 		this.priority = priority;
 		this.cost = cost;
 	}

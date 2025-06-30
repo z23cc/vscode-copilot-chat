@@ -264,13 +264,13 @@ export class SuperClassRunnable extends AbstractContextRunnable {
 	private readonly classDeclaration: tt.ClassDeclaration;
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, classDeclaration: tt.ClassDeclaration, priority: number = Priorities.Inherited) {
-		super(session, languageService, context, priority, ComputeCost.Medium);
+		super(session, languageService, context, SuperClassRunnable.name, priority, ComputeCost.Medium);
 		this.classDeclaration = classDeclaration;
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheScope = this.createCacheScope(this.classDeclaration.members, this.classDeclaration.getSourceFile());
-		return result.createRunnableResult(SuperClassRunnable.name, this.context, { emitMode: EmitMode.ClientBased, scope: cacheScope });
+		return result.createRunnableResult(this.id, this.context, { emitMode: EmitMode.ClientBased, scope: cacheScope });
 	}
 
 	protected override run(result: RunnableResult, _token: tt.CancellationToken): void {
@@ -301,12 +301,12 @@ class SimilarClassRunnable extends AbstractContextRunnable {
 	private readonly classDeclaration: tt.ClassDeclaration;
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, classDeclaration: tt.ClassDeclaration, priority: number = Priorities.Blueprints) {
-		super(session, languageService, context, priority, ComputeCost.High);
+		super(session, languageService, context, SimilarClassRunnable.name, priority, ComputeCost.High);
 		this.classDeclaration = classDeclaration;
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
-		return result.createRunnableResult(SimilarClassRunnable.name, this.context);
+		return result.createRunnableResult(this.id, this.context);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {

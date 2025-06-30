@@ -28,7 +28,7 @@ export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
 	private readonly cacheScope: CacheScope | undefined;
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, tokenInfo: TokenInfo, symbolsToQuery: tt.SymbolFlags, cacheScope?: CacheScope) {
-		super(session, languageService, context, Priorities.ImportedFunctions, ComputeCost.Medium);
+		super(session, languageService, context, GlobalSymbolsInScopeRunnable.name, Priorities.ImportedFunctions, ComputeCost.Medium);
 		this.tokenInfo = tokenInfo;
 		this.symbolsToQuery = symbolsToQuery;
 		this.cacheScope = cacheScope;
@@ -36,7 +36,7 @@ export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo | undefined = this.cacheScope !== undefined ? { emitMode: EmitMode.ClientBasedOnTimeout, scope: this.cacheScope } : undefined;
-		return result.createRunnableResult(GlobalSymbolsInScopeRunnable.name, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, this.context, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {

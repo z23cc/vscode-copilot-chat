@@ -34,13 +34,13 @@ export class CompilerOptionsRunnable extends AbstractContextRunnable {
 	private readonly document: FilePath;
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, document: FilePath) {
-		super(session, languageService, context, Priorities.Traits, ComputeCost.Low);
+		super(session, languageService, context, CompilerOptionsRunnable.name, Priorities.Traits, ComputeCost.Low);
 		this.document = document;
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo = { emitMode: EmitMode.ClientBased, scope: { kind: CacheScopeKind.File } };
-		return result.createRunnableResult(CompilerOptionsRunnable.name, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, this.context, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, _token: tt.CancellationToken): void {
@@ -75,8 +75,8 @@ export abstract class FunctionLikeContextRunnable<T extends tt.FunctionLikeDecla
 	protected readonly declaration: T;
 	protected readonly sourceFile: tt.SourceFile;
 
-	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, declaration: T, priority: number, cost: ComputeCost) {
-		super(session, languageService, context, priority, cost);
+	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, id: string, declaration: T, priority: number, cost: ComputeCost) {
+		super(session, languageService, context, id, priority, cost);
 		this.declaration = declaration;
 		this.sourceFile = declaration.getSourceFile();
 	}
@@ -94,13 +94,13 @@ export abstract class FunctionLikeContextRunnable<T extends tt.FunctionLikeDecla
 export class SignatureRunnable extends FunctionLikeContextRunnable {
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, declaration: tt.FunctionLikeDeclarationBase, priority: number = Priorities.Locals) {
-		super(session, languageService, context, declaration, priority, ComputeCost.Low);
+		super(session, languageService, context, SignatureRunnable.computeId(session, declaration), declaration, priority, ComputeCost.Low);
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const scope = this.getCacheScope();
 		const cacheInfo: CacheInfo | undefined = scope !== undefined ? { emitMode: EmitMode.ClientBased, scope } : undefined;
-		return result.createRunnableResult(SignatureRunnable.name, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, this.context, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
@@ -139,6 +139,22 @@ export class SignatureRunnable extends FunctionLikeContextRunnable {
 			seen.add(symbol);
 		}
 	}
+
+	private static computeId(session: ComputeContextSession, declaration: tt.FunctionLikeDeclarationBase): string {
+		const host = session.host;
+		if (host.isDebugging()) {
+			const sourceFile = declaration.getSourceFile();
+			const start = ts.getLineAndCharacterOfPosition(sourceFile, declaration.getStart(sourceFile));
+			const end = ts.getLineAndCharacterOfPosition(sourceFile, declaration.getEnd());
+			return `${SignatureRunnable.name}:${declaration.getSourceFile().fileName}:[${start.line},${start.character},${end.line},${end.character}]`;
+		} else {
+			const hash = session.host.createHash('md5'); // CodeQL [SM04514] The 'md5' algorithm is used to compute a shorter string to represent a symbol in a map. It has no security implications.
+			const sourceFile = declaration.getSourceFile();
+			hash.update(sourceFile.fileName);
+			hash.update(`[${declaration.getStart(sourceFile)},${declaration.getEnd()}]`);
+			return hash.digest('base64');
+		}
+	}
 }
 
 export class TypeOfLocalsRunnable extends AbstractContextRunnable {
@@ -150,7 +166,7 @@ export class TypeOfLocalsRunnable extends AbstractContextRunnable {
 
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, tokenInfo: tss.TokenInfo, excludes: Set<tt.Symbol>, cacheScope: CacheScope | undefined, priority: number = Priorities.Locals) {
-		super(session, languageService, context, priority, ComputeCost.Medium);
+		super(session, languageService, context, TypeOfLocalsRunnable.name, priority, ComputeCost.Medium);
 		this.tokenInfo = tokenInfo;
 		this.excludes = excludes;
 		this.cacheScope = cacheScope;
@@ -159,7 +175,7 @@ export class TypeOfLocalsRunnable extends AbstractContextRunnable {
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo | undefined = this.cacheScope !== undefined ? { emitMode: EmitMode.ClientBasedOnTimeout, scope: this.cacheScope } : undefined;
-		this.runnableResult = result.createRunnableResult(TypeOfLocalsRunnable.name, this.context, cacheInfo);
+		this.runnableResult = result.createRunnableResult(this.id, this.context, cacheInfo);
 		return this.runnableResult;
 	}
 
@@ -232,13 +248,13 @@ export class TypesOfNeighborFilesRunnable extends AbstractContextRunnable {
 	private readonly tokenInfo: tss.TokenInfo;
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, tokenInfo: tss.TokenInfo, priority: number = Priorities.NeighborFiles) {
-		super(session, languageService, context, priority, ComputeCost.Medium);
+		super(session, languageService, context, TypesOfNeighborFilesRunnable.name, priority, ComputeCost.Medium);
 		this.tokenInfo = tokenInfo;
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo = { emitMode: EmitMode.ClientBased, scope: { kind: CacheScopeKind.NeighborFiles } };
-		return result.createRunnableResult(TypesOfNeighborFilesRunnable.name, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, this.context, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, cancellationToken: tt.CancellationToken): void {
@@ -292,7 +308,7 @@ export class TypeOfImportsRunnable extends AbstractContextRunnable {
 	private runnableResult: RunnableResult | undefined;
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, tokenInfo: tss.TokenInfo, excludes: Set<tt.Symbol>, cacheScope: CacheScope | undefined, priority: number = Priorities.ImportedTypes) {
-		super(session, languageService, context, priority, ComputeCost.Medium);
+		super(session, languageService, context, TypeOfImportsRunnable.name, priority, ComputeCost.Medium);
 		this.tokenInfo = tokenInfo;
 		this.excludes = excludes;
 		this.defaultCacheScope = cacheScope;
@@ -301,7 +317,7 @@ export class TypeOfImportsRunnable extends AbstractContextRunnable {
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo | undefined = this.defaultCacheScope !== undefined ? { emitMode: EmitMode.ClientBased, scope: this.defaultCacheScope } : undefined;
-		this.runnableResult = result.createRunnableResult(TypeOfImportsRunnable.name, this.context, cacheInfo);
+		this.runnableResult = result.createRunnableResult(this.id, this.context, cacheInfo);
 		return this.runnableResult;
 	}
 
@@ -377,7 +393,7 @@ export class TypeOfExpressionRunnable extends AbstractContextRunnable {
 	private readonly expression: tt.Expression;
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, expression: tt.Expression, priority: number = Priorities.Locals) {
-		super(session, languageService, context, priority, ComputeCost.Low);
+		super(session, languageService, context, TypeOfExpressionRunnable.name, priority, ComputeCost.Low);
 		this.expression = expression;
 	}
 
@@ -415,7 +431,7 @@ export class TypeOfExpressionRunnable extends AbstractContextRunnable {
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
-		return result.createRunnableResult(TypeOfExpressionRunnable.name, this.context);
+		return result.createRunnableResult(this.id, this.context);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {

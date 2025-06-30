@@ -72,7 +72,7 @@ export enum KnownSources {
 	unknown = 'unknown',
 	sideCar = 'sideCar',
 	completion = 'completion',
-	selection = 'selection',
+	populateCache = 'populateCache',
 	nes = 'nes',
 	chat = 'chat',
 	fix = 'fix'

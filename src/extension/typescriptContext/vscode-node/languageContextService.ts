@@ -263,7 +263,8 @@ interface ContextItemSummary {
 	cancelled: boolean;
 	timedOut: boolean;
 	tokenBudgetExhausted: boolean;
-	cacheHits: number;
+	cachedItems: number;
+	referencedItems: number;
 	serverTime: number;
 	contextComputeTime: number;
 	fromCache: boolean;
@@ -276,7 +277,8 @@ export namespace ContextItemSummary {
 		cancelled: false,
 		timedOut: false,
 		tokenBudgetExhausted: true,
-		cacheHits: 0,
+		cachedItems: 0,
+		referencedItems: 0,
 		serverTime: -1,
 		contextComputeTime: -1,
 		fromCache: false
@@ -344,7 +346,8 @@ class TelemetrySender {
 				"items": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "Detailed information about each context item delivered." },
 				"totalSize": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "Total size of all context items", "isMeasurement": true },
 				"fileSize": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "The size of the file", "isMeasurement": true },
-				"cacheHits": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "Number of cache hits", "isMeasurement": true },
+				"cachedItems": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "Number of cache items", "isMeasurement": true },
+				"referencedItems": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "Number of referenced items", "isMeasurement": true },
 				"isSpeculative": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "Whether the request was speculative" },
 				"beforeCacheState": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "The cache state before the request was sent" },
 				"afterCacheState": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "comment": "The cache state after the request was sent" },
@@ -376,10 +379,11 @@ class TelemetrySender {
 				yielded: stats.yielded,
 				totalSize: totalSize,
 				fileSize: fileSize,
-				cacheHits: data.cacheHits
+				cachedItems: data.cachedItems,
+				referencedItems: data.referencedItems
 			}
 		);
-		this.logService.logger.info(`TypeScript Copilot context: [${context.requestId}, ${context.source ?? KnownSources.unknown}, ${JSON.stringify(position, undefined, 0)}, ${JSON.stringify(nodePath, undefined, 0)}, ${JSON.stringify(stats, undefined, 0)}, cacheHits:${data.cacheHits}, cacheState:${JSON.stringify(cacheState, undefined, 0)}, budgetExhausted:${data.tokenBudgetExhausted}, cancelled: ${data.cancelled}, timedOut:${data.timedOut}, fileSize:${fileSize}] in [${timeTaken},${data.serverTime},${data.contextComputeTime}]ms.${data.timedOut ? ' Timed out.' : ''}`);
+		this.logService.logger.info(`TypeScript Copilot context: [${context.requestId}, ${context.source ?? KnownSources.unknown}, ${JSON.stringify(position, undefined, 0)}, ${JSON.stringify(nodePath, undefined, 0)}, ${JSON.stringify(stats, undefined, 0)}, cacheItems:${data.cachedItems}, cacheState:${JSON.stringify(cacheState, undefined, 0)}, budgetExhausted:${data.tokenBudgetExhausted}, cancelled:${data.cancelled}, timedOut:${data.timedOut}, fileSize:${fileSize}] in [${timeTaken},${data.serverTime},${data.contextComputeTime}]ms.${data.timedOut ? ' Timed out.' : ''}`);
 		if (data.errorData !== undefined && data.errorData.length > 0) {
 			const errorData = data.errorData;
 			for (const error of errorData) {
@@ -665,9 +669,6 @@ class RunnableResultCache implements vscode.Disposable {
 	private readonly outsideRangeRunnableResults: { resultId: protocol.ContextRunnableResultId; ranges: vscode.Range[] }[] = [];
 	private readonly neighborFileRunnableResults: { resultId: protocol.ContextRunnableResultId }[];
 
-	// Items for a subsequent speculative request
-	private itemsForSpeculativeRequest: protocol.ContextItem[] | undefined;
-
 	constructor() {
 		this.disposables.add(this);
 		this.requestInfo = undefined;
@@ -680,8 +681,6 @@ class RunnableResultCache implements vscode.Disposable {
 		this.withInRangeRunnableResults = [];
 		this.outsideRangeRunnableResults = [];
 		this.neighborFileRunnableResults = [];
-
-		this.itemsForSpeculativeRequest = undefined;
 
 		this.disposables.add(vscode.workspace.onDidChangeTextDocument((event: vscode.TextDocumentChangeEvent) => {
 			if (this.requestInfo === undefined || event.contentChanges.length === 0) {
@@ -748,15 +747,13 @@ class RunnableResultCache implements vscode.Disposable {
 		this.withInRangeRunnableResults.length = 0;
 		this.outsideRangeRunnableResults.length = 0;
 		this.neighborFileRunnableResults.length = 0;
-
-		this.itemsForSpeculativeRequest = undefined;
 	}
 
 	public getCacheState(): CacheState {
 		return this.cacheInfo.state;
 	}
 
-	public update(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, body: protocol.ComputeContextResponse.OK, requestState: ContextRequestState | undefined): number {
+	public update(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, body: protocol.ComputeContextResponse.OK, requestState: ContextRequestState | undefined): { cached: number; referenced: number } {
 		const itemMap = requestState?.itemMap ?? new Map();
 		const usedResults = requestState?.resultMap ?? new Map();
 
@@ -769,7 +766,8 @@ class RunnableResultCache implements vscode.Disposable {
 			state: CacheState.NotPopulated
 		};
 
-		let cacheHits = 0;
+		let cachedItems = 0;
+		let referencedItems = 0;
 		this.requestInfo = {
 			document: document.uri.toString(),
 			version: document.version,
@@ -778,15 +776,9 @@ class RunnableResultCache implements vscode.Disposable {
 			requestId: context.requestId,
 			path: body.path ?? [0]
 		};
-		const isSpeculativeRequest = context.proposedEdits !== undefined;
-		if (isSpeculativeRequest) {
-			this.itemsForSpeculativeRequest = undefined;
-		} else {
-			this.itemsForSpeculativeRequest = [];
-		}
 
 		if (body.runnableResults === undefined || body.runnableResults.length === 0) {
-			return cacheHits;
+			return { cached: cachedItems, referenced: referencedItems };
 		}
 
 		const updateRunnableResult = (resultItem: protocol.ContextRunnableResultTypes): void => {
@@ -797,6 +789,9 @@ class RunnableResultCache implements vscode.Disposable {
 					let item: protocol.ContextItem | undefined;
 					if (contextItem.kind === protocol.ContextKind.Reference) {
 						item = itemMap.get(contextItem.key);
+						if (item === undefined) {
+							referencedItems++;
+						}
 					} else {
 						item = contextItem;
 					}
@@ -809,7 +804,7 @@ class RunnableResultCache implements vscode.Disposable {
 			} else if (resultItem.kind === protocol.ContextRunnableResultKind.Reference) {
 				result = usedResults.get(resultItem.id);
 				if (result !== undefined) {
-					cacheHits += result.items.length;
+					cachedItems += result.items.length;
 				}
 			}
 			if (result === undefined) {
@@ -831,20 +826,13 @@ class RunnableResultCache implements vscode.Disposable {
 					this.outsideRangeRunnableResults.push({ resultId: result.id, ranges });
 				}
 			}
-			if (this.itemsForSpeculativeRequest !== undefined) {
-				for (const item of result.items) {
-					if (item.kind !== protocol.ContextKind.Reference) {
-						this.itemsForSpeculativeRequest.push(item);
-					}
-				}
-			}
 			this.updateCacheState(result.state);
 		};
 
 		for (const runnableResult of body.runnableResults) {
 			updateRunnableResult(runnableResult);
 		}
-		return cacheHits;
+		return { cached: cachedItems, referenced: referencedItems };
 	}
 
 	private updateCacheState(state: protocol.ContextRunnableState): void {
@@ -1091,7 +1079,8 @@ class ContextItemResultBuilder implements ContextItemSummary {
 	public cancelled: boolean;
 	public timedOut: boolean;
 	public tokenBudgetExhausted: boolean;
-	public cacheHits: number;
+	public cachedItems: number;
+	public referencedItems: number;
 	public serverTime: number;
 	public contextComputeTime: number;
 	public fromCache: boolean;
@@ -1108,7 +1097,8 @@ class ContextItemResultBuilder implements ContextItemSummary {
 		this.cancelled = false;
 		this.timedOut = false;
 		this.tokenBudgetExhausted = false;
-		this.cacheHits = 0;
+		this.cachedItems = 0;
+		this.referencedItems = 0;
 		this.serverTime = -1;
 		this.contextComputeTime = -1;
 		this.fromCache = false;
@@ -1123,7 +1113,7 @@ class ContextItemResultBuilder implements ContextItemSummary {
 		this.cancelled = token.isCancellationRequested;
 	}
 
-	public *update(item: protocol.ContextRunnableResultTypes, itemMap: Map<protocol.ContextItemKey, protocol.ContextItem>): IterableIterator<ContextItem> {
+	public *update(item: protocol.ContextRunnableResultTypes, itemMap: Map<protocol.ContextItemKey, protocol.ContextItem>, fromCache: boolean = false): IterableIterator<ContextItem> {
 		if (this.seenRunnableResults.has(item.id)) {
 			return;
 		}
@@ -1132,10 +1122,13 @@ class ContextItemResultBuilder implements ContextItemSummary {
 		if (item.kind === protocol.ContextRunnableResultKind.Reference) {
 			runnableResult = this.runnableResultCache.getRunnableResult(item.id);
 			if (runnableResult !== undefined) {
-				this.cacheHits += runnableResult.items.length;
+				this.cachedItems += runnableResult.items.length;
 			}
 		} else if (item.kind === protocol.ContextRunnableResultKind.ComputedResult) {
 			runnableResult = item;
+			if (fromCache) {
+				this.cachedItems += runnableResult.items.length;
+			}
 		}
 		if (runnableResult === undefined) {
 			this.logService.logger.warn(`Runnable result not found in cache: ${item.id}`);
@@ -1147,7 +1140,7 @@ class ContextItemResultBuilder implements ContextItemSummary {
 			if (item.kind === protocol.ContextKind.Reference) {
 				contextItem = itemMap.get(item.key);
 				if (contextItem !== undefined) {
-					this.cacheHits++;
+					this.referencedItems++;
 				}
 			} else {
 				contextItem = item;
@@ -1159,7 +1152,7 @@ class ContextItemResultBuilder implements ContextItemSummary {
 			if (protocol.ContextItem.hasKey(contextItem) && this.seenContextItems.has(contextItem.key)) {
 				continue;
 			}
-			const converted = ContextItemResultBuilder.convert(contextItem);
+			const converted = ContextItemResultBuilder.doConvert(contextItem);
 			if (converted === undefined) {
 				continue;
 			}
@@ -1168,14 +1161,45 @@ class ContextItemResultBuilder implements ContextItemSummary {
 		}
 	}
 
-	public static convert(item: protocol.ContextItem): ContextItem | undefined {
+	public *convert(item: protocol.ContextRunnableResultTypes, itemMap: Map<protocol.ContextItemKey, protocol.ContextItem>): IterableIterator<ContextItem> {
+		let runnableResult: protocol.ContextRunnableResult | undefined;
+		if (item.kind === protocol.ContextRunnableResultKind.Reference) {
+			runnableResult = this.runnableResultCache.getRunnableResult(item.id);
+		} else {
+			runnableResult = item;
+		}
+		if (runnableResult === undefined) {
+			this.logService.logger.warn(`Runnable result not found in cache: ${item.id}`);
+			return;
+		}
+		Stats.update(this.stats, runnableResult);
+		for (const item of runnableResult.items) {
+			let contextItem: protocol.ContextItem | undefined;
+			if (item.kind === protocol.ContextKind.Reference) {
+				contextItem = itemMap.get(item.key);
+			} else {
+				contextItem = item;
+			}
+			if (contextItem === undefined) {
+				continue;
+			}
+			const converted = ContextItemResultBuilder.doConvert(contextItem);
+			if (converted === undefined) {
+				continue;
+			}
+			Stats.yielded(this.stats);
+			yield converted;
+		}
+	}
+
+	private static doConvert(item: protocol.ContextItem): ContextItem | undefined {
 		switch (item.kind) {
 			case protocol.ContextKind.Snippet:
 				return {
 					kind: ContextKind.Snippet,
 					priority: item.priority,
-					uri: vscode.Uri.parse(item.uri),
-					additionalUris: item.additionalUris?.map(uri => vscode.Uri.parse(uri)),
+					uri: vscode.Uri.file(item.fileName),
+					additionalUris: item.additionalFileNames?.map(uri => vscode.Uri.file(uri)),
 					value: item.value
 				};
 			case protocol.ContextKind.Trait:
@@ -1509,12 +1533,16 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 				const body: protocol.ComputeContextResponse.OK = response.body;
 				const contextItemResult = new ContextItemResultBuilder(this.runnableResultCache, this.logService);
 				if (documentVersion === document.version) {
-					contextItemResult.cacheHits += this.runnableResultCache.update(document, position, context, body, contextRequestState);
+					const { cached, referenced } = this.runnableResultCache.update(document, position, context, body, contextRequestState);
+					contextItemResult.cachedItems += cached;
+					contextItemResult.referencedItems += referenced;
 				}
 				if (body.runnableResults !== undefined && forDebugging !== undefined) {
 					const itemMap: Map<protocol.ContextItemKey, protocol.ContextItem> = contextRequestState?.itemMap ?? new Map();
 					for (const runnableResult of body.runnableResults) {
-						for (const item of contextItemResult.update(runnableResult, itemMap)) {
+						// Don't go through the context item result builder since we already updated
+						// everything through the cache update call.
+						for (const item of contextItemResult.convert(runnableResult, itemMap)) {
 							forDebugging?.push(item);
 						}
 					}
@@ -1548,7 +1576,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 		this.onTimeOut = { requestId: context.requestId, results: contextRequestState?.clientOnTimeout, contextItemResult: contextItemResult, itemMap };
 		if (contextRequestState !== undefined) {
 			for (const runnableResult of contextRequestState.client) {
-				for (const item of contextItemResult.update(runnableResult, itemMap)) {
+				for (const item of contextItemResult.update(runnableResult, itemMap, true)) {
 					forDebugging?.push(item);
 					yield item;
 				}
@@ -1598,7 +1626,9 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 			} else if (protocol.ComputeContextResponse.isOk(response)) {
 				const body: protocol.ComputeContextResponse.OK = response.body;
 				if (documentVersion === document.version) {
-					contextItemResult.cacheHits += this.runnableResultCache.update(document, position, context, body, contextRequestState);
+					const { cached, referenced } = this.runnableResultCache.update(document, position, context, body, contextRequestState);
+					contextItemResult.cachedItems += cached;
+					contextItemResult.referencedItems += referenced;
 				}
 				if (body.runnableResults !== undefined) {
 					for (const runnableResult of body.runnableResults) {
@@ -1826,7 +1856,7 @@ export class InlineCompletionContribution implements vscode.Disposable {
 						requestId: generateUuid(),
 						timeBudget: 50,
 						tokenBudget: tokenBudget,
-						source: KnownSources.selection,
+						source: KnownSources.populateCache,
 						proposedEdits: undefined
 					};
 					languageContextService.populateCache(event.textEditor.document, position, context).catch(() => {

@@ -209,14 +209,14 @@ export type CodeSnippet = {
 	priority: number;
 
 	/**
-	 * The primary URI
+	 * The primary file name.
 	 */
-	uri: FilePath;
+	fileName: FilePath;
 
 	/**
 	 * Additional URIs
 	 */
-	additionalUris?: FilePath[];
+	additionalFileNames?: FilePath[];
 
 	/**
 	 * The snippet value.
@@ -230,16 +230,16 @@ export type CodeSnippet = {
 	speculativeKind: SpeculativeKind;
 };
 export namespace CodeSnippet {
-	export function create(key: string | undefined, uri: FilePath, additionalUris: FilePath[] | undefined, value: string, priority: number, speculativeKind: SpeculativeKind): CodeSnippet {
-		return { kind: ContextKind.Snippet, key, uri, additionalUris, value, priority, speculativeKind };
+	export function create(key: string | undefined, fileName: FilePath, additionalFileNames: FilePath[] | undefined, value: string, priority: number, speculativeKind: SpeculativeKind): CodeSnippet {
+		return { kind: ContextKind.Snippet, key, fileName, additionalFileNames, value, priority, speculativeKind };
 	}
 	export function sizeInChars(snippet: CodeSnippet): number {
 		let result: number = snippet.value.length;
 		// +3 for "// " at the beginning of the line.
-		result += snippet.uri.length + 3;
-		if (snippet.additionalUris !== undefined) {
-			for (const uri of snippet.additionalUris) {
-				result += uri.length + 3;
+		result += snippet.fileName.length + 3;
+		if (snippet.additionalFileNames !== undefined) {
+			for (const fileName of snippet.additionalFileNames) {
+				result += fileName.length + 3;
 			}
 		}
 		return result;

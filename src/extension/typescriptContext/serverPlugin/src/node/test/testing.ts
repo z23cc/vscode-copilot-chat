@@ -20,7 +20,7 @@ function normalize(value: string): string {
 export type ExpectedCodeSnippet = {
 	kind: ContextKind.Snippet;
 	value: string;
-	uri: RegExp;
+	fileName: RegExp;
 };
 
 export type ExpectedTrait = {
@@ -37,8 +37,8 @@ function assertCodeSnippet(actual: CodeSnippet, expected: ExpectedCodeSnippet): 
 	assert.ok(actual.kind === ContextKind.Snippet, `Expected snippet, got ${actual.kind}`);
 	assert.ok(expected.kind === ContextKind.Snippet, `Expected snippet, got ${expected.kind}`);
 	assert.strictEqual(normalize(actual.value), normalize(expected.value));
-	const source = actual.uri;
-	assert.ok(source.match(expected.uri) !== null);
+	const source = actual.fileName;
+	assert.ok(source.match(expected.fileName) !== null);
 }
 
 function assertTrait(actual: Trait, expected: ExpectedTrait): void {

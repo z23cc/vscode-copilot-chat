@@ -173,9 +173,11 @@ export class ChatEndpoint implements IChatEndpoint {
 		@IThinkingDataService private readonly _thinkingDataService: IThinkingDataService,
 	) {
 		// This metadata should always be present, but if not we will default to 8192 tokens
-		this._maxTokens = _modelMetadata.capabilities.limits?.max_prompt_tokens ?? 8192;
+		//this._maxTokens = _modelMetadata.capabilities.limits?.max_prompt_tokens ?? 8192;
 		// This metadata should always be present, but if not we will default to 4096 tokens
-		this._maxOutputTokens = _modelMetadata.capabilities.limits?.max_output_tokens ?? 4096;
+		//this._maxOutputTokens = _modelMetadata.capabilities.limits?.max_output_tokens ?? 4096;
+		this._maxTokens = 200000;
+		this._maxOutputTokens = 56000;
 		this.model = _modelMetadata.id;
 		this.name = _modelMetadata.name;
 		this.version = _modelMetadata.version;
@@ -261,6 +263,12 @@ export class ChatEndpoint implements IChatEndpoint {
 				return message;
 			});
 			body['messages'] = newMessages;
+		}
+
+		if (body) {
+			delete body.temperature;
+			body['max_completion_tokens'] = body.max_tokens;
+			delete body.max_tokens;
 		}
 	}
 

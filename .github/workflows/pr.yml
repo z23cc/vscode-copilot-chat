@@ -49,6 +49,11 @@ jobs:
       - name: Ensure no duplicate cache keys
         run: npx tsx test/base/cache-cli check
 
+      - name: Debug
+        run: gh auth status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Ensure no untrusted cache changes
         run: npx tsx build/pr-check-cache-files.ts
         if: github.event_name == 'pull_request'

@@ -47,6 +47,15 @@ async function getCollaborators(repository: string): Promise<readonly Collaborat
 	return JSON.parse(stdout) as ReadonlyArray<Collaborator>;
 }
 
+async function isCollaborator(repository: string, login: string): Promise<boolean> {
+	try {
+		await execAsync(`gh api -H "Accept: application/vnd.github+json" /repos/${repository}/collaborators/${login} --silent`);
+		return true;
+	} catch (error) {
+		return false;
+	}
+}
+
 async function getCommit(repository: string, sha: string): Promise<Commit> {
 	const { stdout, stderr } = await execAsync(
 		`gh api -H "Accept: application/vnd.github+json" /repos/${repository}/commits/${sha}`, { maxBuffer: 25 * 1024 * 1024 });
@@ -151,7 +160,10 @@ async function main() {
 			throw new Error('Missing required environment variables: REPOSITORY or PULL_REQUEST');
 		}
 
-		console.log(JSON.stringify(await getCollaborators(repository), null, 2));
+		console.log('isCollaborator', 'joaomoreno', await isCollaborator(repository, 'joaomoreno'));
+		console.log('isCollaborator', 'egamma', await isCollaborator(repository, 'egamma'));
+		console.log('isCollaborator', 'meganrogge', await isCollaborator(repository, 'meganrogge'));
+
 		console.log(`🔍 Checking pull request #${pullRequestNumber} in repository "${repository}"...`);
 
 		// Get a list of files in the pull request

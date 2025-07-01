@@ -10,9 +10,7 @@ on:
       - main
       - 'release/*'
 
-permissions:
-  contents: write
-  pull-requests: read
+permissions: write-all
 
 env:
   IS_MAIN: ${{ github.ref == 'refs/heads/main' }}

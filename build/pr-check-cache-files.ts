@@ -151,6 +151,7 @@ async function main() {
 			throw new Error('Missing required environment variables: REPOSITORY or PULL_REQUEST');
 		}
 
+		console.log(JSON.stringify(await getCollaborators(repository), null, 2));
 		console.log(`🔍 Checking pull request #${pullRequestNumber} in repository "${repository}"...`);
 
 		// Get a list of files in the pull request

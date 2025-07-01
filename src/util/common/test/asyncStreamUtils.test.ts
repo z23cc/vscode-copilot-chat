@@ -5,9 +5,9 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AsyncStreamUtils, createAsyncStreamBuilder, fromArray, fromPromise } from '../asyncStreamUtils';
-import { CancellationTokenSource } from '../vs/base/common/cancellation';
-import { CancellationError } from '../vs/base/common/errors';
-import { AsyncIterableObject, AsyncIterableSource } from '../vs/base/common/async';
+import { CancellationTokenSource } from '../../vs/base/common/cancellation';
+import { CancellationError } from '../../vs/base/common/errors';
+import { AsyncIterableObject, AsyncIterableSource } from '../../vs/base/common/async';
 
 describe('AsyncStreamUtils', () => {
 	let cancellationTokenSource: CancellationTokenSource;

@@ -9,8 +9,8 @@
  */
 
 import { AsyncStreamUtils, createAsyncStreamBuilder, fromArray, fromPromise } from './asyncStreamUtils';
-import { CancellationTokenSource } from './vs/base/common/cancellation';
-import { AsyncIterableObject } from './vs/base/common/async';
+import { CancellationTokenSource } from '../vs/base/common/cancellation';
+import { AsyncIterableObject } from '../vs/base/common/async';
 
 // Example 1: Basic buffering
 async function basicBufferingExample() {

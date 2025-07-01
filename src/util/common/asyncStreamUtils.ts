@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { CancellationToken, CancellationTokenSource } from './vs/base/common/cancellation';
-import { CancellationError } from './vs/base/common/errors';
-import { AsyncIterableObject, AsyncIterableSource, CancelableAsyncIterableObject, createCancelableAsyncIterable, timeout } from './vs/base/common/async';
-import { Disposable, IDisposable } from './vs/base/common/lifecycle';
+import { CancellationToken, CancellationTokenSource } from '../vs/base/common/cancellation';
+import { CancellationError } from '../vs/base/common/errors';
+import { AsyncIterableObject, AsyncIterableSource, CancelableAsyncIterableObject, createCancelableAsyncIterable, timeout } from '../vs/base/common/async';
+import { Disposable, IDisposable } from '../vs/base/common/lifecycle';
 
 /**
  * Enhanced async stream abstractions for easier handling of async streams

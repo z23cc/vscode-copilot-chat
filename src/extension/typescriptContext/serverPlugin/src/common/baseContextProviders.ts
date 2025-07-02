@@ -149,7 +149,7 @@ export class SignatureRunnable extends FunctionLikeContextRunnable {
 			const sourceFile = declaration.getSourceFile();
 			hash.update(sourceFile.fileName);
 			hash.update(`[${startPos},${endPos}]`);
-			return hash.digest('base64');
+			return `${SignatureRunnable.name}:${hash.digest('base64')}`;
 		}
 	}
 }
@@ -264,7 +264,7 @@ export class TypesOfNeighborFilesRunnable extends AbstractContextRunnable {
 			if (neighborSourceFile === undefined || this.skipSourceFile(neighborSourceFile)) {
 				continue;
 			}
-			const sourceFileSymbol = symbols.getSymbolAtLocation(neighborSourceFile);
+			const sourceFileSymbol = symbols.getLeafSymbolAtLocation(neighborSourceFile);
 			// The neighbor file might have been seen when importing a value module
 			if (sourceFileSymbol === undefined) {
 				continue;

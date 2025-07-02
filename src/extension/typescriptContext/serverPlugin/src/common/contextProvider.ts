@@ -11,6 +11,7 @@ import {
 	CacheScopeKind, CodeSnippet,
 	ContextItem,
 	ContextItemReference,
+	ContextKind,
 	ContextRequestResultState,
 	ContextRunnableResultKind,
 	ContextRunnableState,
@@ -126,7 +127,7 @@ export class RequestContext {
 		return result;
 	}
 
-	public createContextItemReference(key: ContextItemKey): ContextItemReference | undefined {
+	public createContextItemReferenceIfManaged(key: ContextItemKey): ContextItemReference | undefined {
 		const cachedItem = this.clientSideContextItems.get(key);
 		return cachedItem !== undefined ? ContextItemReference.create(cachedItem.key) : undefined;
 	}
@@ -159,12 +160,12 @@ export abstract class Search<R> extends ProgramContext {
 	}
 
 	public getHeritageSymbol(node: tt.Node): tt.Symbol | undefined {
-		let result = this.symbols.getSymbolAtLocation(node);
+		let result = this.symbols.getLeafSymbolAtLocation(node);
 		if (result === undefined) {
 			return undefined;
 		}
 		if (Symbols.isAlias(result)) {
-			result = this.symbols.getAliasedSymbol(result);
+			result = this.symbols.getLeafAliasedSymbol(result);
 		}
 		let counter = 0;
 		while (Symbols.isTypeAlias(result) && counter < 10) {
@@ -631,7 +632,7 @@ export class ContextResult implements ContextItemManager {
 	}
 
 	public createContextItemReference(key: ContextItemKey): ContextItemReference | undefined {
-		const clientSide = this.context.createContextItemReference(key);
+		const clientSide = this.context.createContextItemReferenceIfManaged(key);
 		if (clientSide !== undefined) {
 			return clientSide;
 		}
@@ -663,10 +664,25 @@ export class ContextResult implements ContextItemManager {
 		this.state = ContextRequestResultState.Finished;
 	}
 
-	public items(): ContextItem[] {
-		const items: ContextItem[] = [];
+	public items(): FullContextItem[] {
+		const seen: Set<ContextItemKey> = new Set();
+		const items: FullContextItem[] = [];
 		for (const runnableResult of this.runnableResults) {
-			items.push(...runnableResult.items);
+			for (const item of runnableResult.items) {
+				if (item.kind === ContextKind.Reference) {
+					if (seen.has(item.key)) {
+						// We have already seen this item, skip it.
+						continue;
+					}
+					seen.add(item.key);
+					const referenced = this.contextItems.get(item.key);
+					if (referenced !== undefined) {
+						items.push(referenced);
+					}
+				} else {
+					items.push(item);
+				}
+			}
 		}
 		return items;
 	}

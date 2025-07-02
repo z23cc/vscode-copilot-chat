@@ -65,7 +65,7 @@ abstract class MethodBlueprintSearch extends ClassPropertyBlueprintSearch<tt.Met
 		const typesToCheck: tt.Symbol[] = [];
 		let classToCheck: tt.Symbol | undefined = undefined;
 		if (!isPrivate) {
-			const symbol = symbols.getSymbolAtLocation(classDeclaration.name !== undefined ? classDeclaration.name : classDeclaration);
+			const symbol = symbols.getLeafSymbolAtLocation(classDeclaration.name !== undefined ? classDeclaration.name : classDeclaration);
 			if (symbol === undefined || !Symbols.isClass(symbol)) {
 				return undefined;
 			}
@@ -162,7 +162,7 @@ abstract class FindInSiblingClassSearch<T extends tt.MethodDeclaration | tt.Cons
 					if (heritageClause === undefined || heritageClause.types.length === 0) {
 						throw new Error('No extends clause found');
 					}
-					extendsSymbol = this.symbols.getSymbolAtLocation(heritageClause.types[0].expression);
+					extendsSymbol = this.symbols.getLeafSymbolAtLocation(heritageClause.types[0].expression);
 					if (extendsSymbol === undefined || !Symbols.isClass(extendsSymbol)) {
 						throw new Error('No extends symbol found');
 					}
@@ -259,7 +259,7 @@ class FindMethodInSubclassSearch extends MethodBlueprintSearch {
 				if (!ts.isClassDeclaration(declaration)) {
 					continue;
 				}
-				symbol = this.symbols.getSymbolAtLocation(declaration.name ? declaration.name : declaration);
+				symbol = this.symbols.getLeafSymbolAtLocation(declaration.name ? declaration.name : declaration);
 				if (symbol !== undefined) {
 					break;
 				}
@@ -340,7 +340,7 @@ class FindMethodInHierarchySearch extends MethodBlueprintSearch {
 					if (!ts.isClassDeclaration(declaration) && !ts.isInterfaceDeclaration(declaration)) {
 						continue;
 					}
-					symbol = this.symbols.getSymbolAtLocation(declaration.name ? declaration.name : declaration);
+					symbol = this.symbols.getLeafSymbolAtLocation(declaration.name ? declaration.name : declaration);
 					if (symbol !== undefined && symbol.flags === symbolToCheck.flags) {
 						break;
 					}
@@ -498,7 +498,7 @@ abstract class ClassPropertyContextProvider<T extends tt.MethodDeclaration | tt.
 						continue;
 					}
 					for (const type of heritageClause.types) {
-						const symbol = symbols.getSymbolAtLocation(type.expression);
+						const symbol = symbols.getLeafSymbolAtLocation(type.expression);
 						if (symbol !== undefined && Symbols.isClass(symbol)) {
 							return result.add(symbol);
 						}
@@ -534,11 +534,11 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 		}
 		const program = this.getProgram();
 		const symbols = this.context.getSymbols(program);
-		const methodSymbol = symbols.getSymbolAtLocation(this.declaration.name ? this.declaration.name : this.declaration);
+		const methodSymbol = symbols.getLeafSymbolAtLocation(this.declaration.name ? this.declaration.name : this.declaration);
 		if (methodSymbol === undefined || !Symbols.isMethod(methodSymbol)) {
 			return;
 		}
-		const containerSymbol = symbols.getSymbolAtLocation(containerDeclaration.name ? containerDeclaration.name : containerDeclaration);
+		const containerSymbol = symbols.getLeafSymbolAtLocation(containerDeclaration.name ? containerDeclaration.name : containerDeclaration);
 		if (containerSymbol === undefined || !Symbols.isClass(containerSymbol)) {
 			return;
 		}
@@ -596,10 +596,11 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 	private *getEmitData(symbol: tt.Symbol, symbols: Symbols): IterableIterator<readonly [tt.Symbol | undefined, string | undefined]> {
 		if (Symbols.isProperty(symbol)) {
 			const type = symbols.getTypeChecker().getTypeOfSymbol(symbol);
-			const typeSymbol = type.symbol;
+			let typeSymbol = type.symbol;
 			if (typeSymbol === undefined) {
 				return;
 			}
+			typeSymbol = symbols.getLeafAliasedSymbol(typeSymbol);
 			let name: string | undefined = undefined;
 			const declaration = Symbols.getDeclaration<tt.PropertyDeclaration>(symbol, ts.SyntaxKind.PropertyDeclaration);
 			if (declaration !== undefined) {
@@ -616,10 +617,11 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 				return;
 			}
 			for (const signature of signatures) {
-				const typeSymbol = signature.getReturnType().symbol;
+				let typeSymbol = signature.getReturnType().symbol;
 				if (typeSymbol === undefined) {
 					yield PropertiesTypeRunnable.NoEmitData;
 				}
+				typeSymbol = symbols.getLeafAliasedSymbol(typeSymbol);
 				let name: string | undefined = undefined;
 				const declaration = signature.getDeclaration();
 				if (declaration !== undefined) {

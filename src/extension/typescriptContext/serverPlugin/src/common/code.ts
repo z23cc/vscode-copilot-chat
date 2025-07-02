@@ -832,7 +832,7 @@ export class CodeSnippetBuilder extends ProgramContext implements SnippetProvide
 			if (ts.isTypeAliasDeclaration(declaration)) {
 				const type = declaration.type;
 				if (ts.isTypeLiteralNode(type)) {
-					const symbol = this.symbols.getSymbolAtLocation(type);
+					const symbol = this.symbols.getLeafSymbolAtLocation(type);
 					if (Symbols.isTypeLiteral(symbol)) {
 						return symbol;
 					}

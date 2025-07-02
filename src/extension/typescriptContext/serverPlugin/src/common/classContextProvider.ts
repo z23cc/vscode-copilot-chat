@@ -44,7 +44,7 @@ export class ClassBlueprintSearch extends Search<SimilarClassDeclaration> {
 				if (sourceFile !== undefined) {
 					const localType = tss.getTokenAtPosition(sourceFile, type.pos);
 					if (ts.isExpressionWithTypeArguments(localType)) {
-						const symbol = symbols.getSymbolAtLocation(localType.expression);
+						const symbol = symbols.getLeafSymbolAtLocation(localType.expression);
 						if (symbol !== undefined && !this.getSymbolInfo(symbol).skip) {
 							return { symbol, type: localType, abstractMembers: typeInfo.abstractMembers };
 						}
@@ -275,7 +275,7 @@ export class SuperClassRunnable extends AbstractContextRunnable {
 
 	protected override run(result: RunnableResult, _token: tt.CancellationToken): void {
 		const symbols = this.symbols;
-		const clazz = symbols.getSymbolAtLocation(this.classDeclaration.name ?? this.classDeclaration);
+		const clazz = symbols.getLeafSymbolAtLocation(this.classDeclaration.name ?? this.classDeclaration);
 		if (clazz === undefined || !Symbols.isClass(clazz) || clazz.declarations === undefined) {
 			return;
 		}
@@ -310,7 +310,7 @@ class SimilarClassRunnable extends AbstractContextRunnable {
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
 		const program = this.getProgram();
 		const classDeclaration = this.classDeclaration;
-		const symbol = this.symbols.getSymbolAtLocation(classDeclaration.name ?? classDeclaration);
+		const symbol = this.symbols.getLeafSymbolAtLocation(classDeclaration.name ?? classDeclaration);
 		if (symbol === undefined || !Symbols.isClass(symbol)) {
 			return;
 		}

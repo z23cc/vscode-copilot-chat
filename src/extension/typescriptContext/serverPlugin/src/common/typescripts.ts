@@ -797,14 +797,25 @@ namespace tss {
 			}
 		}
 
-		public getAliasedSymbol(symbol: tt.Symbol): tt.Symbol {
-			return this.typeChecker.getAliasedSymbol(symbol);
-		}
-
 		public getLeafAliasedSymbol(symbol: tt.Symbol): tt.Symbol {
 			let count = 0;
 			while (Symbols.isAlias(symbol) && count++ < 10) {
-				symbol = this.getAliasedSymbol(symbol);
+				symbol = this.typeChecker.getAliasedSymbol(symbol);
+			}
+			while (Symbols.isTypeAlias(symbol) && count++ < 10) {
+				const declarations = symbol.declarations;
+				if (declarations === undefined || declarations.length !== 1) {
+					break;
+				}
+				const declaration = declarations[0];
+				if (!ts.isTypeAliasDeclaration(declaration)) {
+					break;
+				}
+				const typeSymbol = this.getSymbolAtLocation(declaration.type);
+				if (typeSymbol === undefined) {
+					break;
+				}
+				symbol = typeSymbol;
 			}
 			return symbol;
 		}
@@ -873,7 +884,7 @@ namespace tss {
 						if (ts.isTypeAliasDeclaration(declaration)) {
 							const type = declaration.type;
 							if (ts.isTypeLiteralNode(type)) {
-								const superType = this.getSymbolAtLocation(type);
+								const superType = this.getLeafSymbolAtLocation(type);
 								if (superType !== undefined && !seen.has(superType)) {
 									seen.add(superType);
 									yield includePath ? [symbol, superType] : superType;

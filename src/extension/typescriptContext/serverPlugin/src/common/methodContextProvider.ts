@@ -8,7 +8,10 @@ const ts = TS();
 
 import { FunctionLikeContextProvider, FunctionLikeContextRunnable } from './baseContextProviders';
 import { CodeSnippetBuilder } from './code';
-import { AbstractContextRunnable, ComputeCost, ContextResult, RecoverableError, Search, type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext, type RunnableResult, type SeenSymbols } from './contextProvider';
+import {
+	AbstractContextRunnable, ComputeCost, ContextResult, RecoverableError, Search, type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext,
+	type RunnableResult
+} from './contextProvider';
 import { EmitMode, Priorities, SpeculativeKind, type CacheInfo, type Range } from './protocol';
 import tss, { ClassDeclarations, Declarations, Symbols, Traversal, type StateProvider, type TokenInfo } from './typescripts';
 
@@ -432,7 +435,7 @@ abstract class SimilarPropertyRunnable<T extends tt.MethodDeclaration | tt.Const
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const scope = this.getCacheScope();
 		const cacheInfo: CacheInfo | undefined = scope !== undefined ? { emitMode: EmitMode.ClientBased, scope } : undefined;
-		return result.createRunnableResult(this.id, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
@@ -444,15 +447,10 @@ abstract class SimilarPropertyRunnable<T extends tt.MethodDeclaration | tt.Const
 				if (symbol === undefined) {
 					return;
 				}
-				const seen = this.getSeenSymbols();
-				if (seen.has(symbol)) {
-					return;
-				}
 				const sourceFile = this.declaration.getSourceFile();
-				const snippetBuilder = new CodeSnippetBuilder(this.session, this.context.getSymbols(program), sourceFile, seen);
+				const snippetBuilder = new CodeSnippetBuilder(this.session, this.context.getSymbols(program), sourceFile);
 				snippetBuilder.addDeclaration(candidate);
 				result.addSnippet(snippetBuilder, undefined, this.priority, SpeculativeKind.emit);
-				seen.add(symbol);
 			}
 		}
 	}
@@ -523,7 +521,7 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo | undefined = { emitMode: EmitMode.ClientBased, scope: this.createCacheScope(this.declaration) };
-		return result.createRunnableResult(this.id, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
@@ -536,7 +534,6 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 		}
 		const program = this.getProgram();
 		const symbols = this.context.getSymbols(program);
-		const seen = this.getSeenSymbols();
 		const methodSymbol = symbols.getSymbolAtLocation(this.declaration.name ? this.declaration.name : this.declaration);
 		if (methodSymbol === undefined || !Symbols.isMethod(methodSymbol)) {
 			return;
@@ -551,7 +548,7 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 				if (member === methodSymbol) {
 					continue;
 				}
-				if (!this.handleSymbol(result, member, symbols, seen, ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) {
+				if (!this.handleSymbol(result, member, symbols, ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) {
 					return;
 				}
 			}
@@ -564,15 +561,15 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 			}
 			for (const member of type.members.values()) {
 				token.throwIfCancellationRequested();
-				if (!this.handleSymbol(result, member, symbols, seen, ts.ModifierFlags.Protected)) {
+				if (!this.handleSymbol(result, member, symbols, ts.ModifierFlags.Protected)) {
 					return;
 				}
 			}
 		}
 	}
 
-	private handleSymbol(result: RunnableResult, symbol: tt.Symbol, symbols: Symbols, seen: SeenSymbols, flags: tt.ModifierFlags): boolean {
-		if (seen.has(symbol) || !Symbols.hasModifierFlags(symbol, flags)) {
+	private handleSymbol(result: RunnableResult, symbol: tt.Symbol, symbols: Symbols, flags: tt.ModifierFlags): boolean {
+		if (!Symbols.hasModifierFlags(symbol, flags)) {
 			return true;
 		}
 
@@ -582,12 +579,11 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 			if (typeSymbol === undefined) {
 				continue;
 			}
-			const [handled, key] = this.handleSymbolIfSeenOrCached(result, typeSymbol);
+			const [handled, key] = this.handleSymbolIfKnown(result, typeSymbol);
 			if (!handled) {
-				const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+				const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 				snippetBuilder.addTypeSymbol(typeSymbol, name);
 				continueResult = continueResult && result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit, true);
-				seen.add(typeSymbol);
 			}
 			if (!continueResult) {
 				break;

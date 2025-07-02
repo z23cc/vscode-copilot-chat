@@ -9,6 +9,7 @@ const ts = TS();
 import type { Host } from './host';
 import {
 	CacheScopeKind, CodeSnippet,
+	ContextItem,
 	ContextItemReference,
 	ContextRequestResultState,
 	ContextRunnableResultKind,
@@ -17,13 +18,13 @@ import {
 	type CachedContextItem,
 	type CachedContextRunnableResult,
 	type CacheInfo, type CacheScope,
-	type ContextItem, type ContextItemKey,
+	type ContextItemKey,
 	type ContextRequestResult,
 	type ContextRunnableResult,
 	type ContextRunnableResultId,
 	type ContextRunnableResultReference,
 	type ContextRunnableResultTypes,
-	type FilePath, type Range, type SpeculativeKind
+	type FullContextItem, type Range, type SpeculativeKind
 } from './protocol';
 import tss, { ImportedByState, Sessions, Symbols, Types } from './typescripts';
 import { LRUCache } from './utils';
@@ -85,26 +86,24 @@ export abstract class ProgramContext {
 export class RequestContext {
 
 	private readonly symbols: Map<tt.Program, Symbols>;
-	private readonly seenSymbols: SeenSymbols;
 
 	public readonly neighborFiles: tt.server.NormalizedPath[];
-	private readonly cachedContextItems: Map<ContextItemKey, CachedContextItem>;
+	public readonly clientSideRunnableResults: Map<ContextRunnableResultId, CachedContextRunnableResult>;
+	private readonly clientSideContextItems: Map<ContextItemKey, CachedContextItem>;
 
-	constructor(session: ComputeContextSession, neighborFiles: tt.server.NormalizedPath[], cachedRunnableResults: Map<ContextRunnableResultId, CachedContextRunnableResult>) {
+	constructor(_session: ComputeContextSession, neighborFiles: tt.server.NormalizedPath[], clientSideRunnableResults: Map<ContextRunnableResultId, CachedContextRunnableResult>) {
 		this.symbols = new Map();
 		this.neighborFiles = neighborFiles;
-		this.cachedContextItems = new Map();
-		const clientEmittedSymbols: string[] = [];
-		for (const rr of cachedRunnableResults.values()) {
+		this.clientSideRunnableResults = clientSideRunnableResults;
+		this.clientSideContextItems = new Map();
+		for (const rr of clientSideRunnableResults.values()) {
 			if (rr.emitMode !== EmitMode.ClientBased) {
 				continue;
 			}
 			for (const item of rr.items) {
-				clientEmittedSymbols.push(item.key);
-				this.cachedContextItems.set(item.key, item);
+				this.clientSideContextItems.set(item.key, item);
 			}
 		}
-		this.seenSymbols = new SeenSymbols(session, clientEmittedSymbols);
 	}
 
 	public getSymbols(program: tt.Program): Symbols {
@@ -114,10 +113,6 @@ export class RequestContext {
 			this.symbols.set(program, result);
 		}
 		return result;
-	}
-
-	public getSeenSymbols(): SeenSymbols {
-		return this.seenSymbols;
 	}
 
 	public getPreferredNeighborFiles(program: tt.Program): tt.SourceFile[] {
@@ -131,8 +126,13 @@ export class RequestContext {
 		return result;
 	}
 
-	public getCachedContextItem(key: ContextItemKey): CachedContextItem | undefined {
-		return this.cachedContextItems.get(key);
+	public createContextItemReference(key: ContextItemKey): ContextItemReference | undefined {
+		const cachedItem = this.clientSideContextItems.get(key);
+		return cachedItem !== undefined ? ContextItemReference.create(cachedItem.key) : undefined;
+	}
+
+	public clientHasContextItem(key: ContextItemKey): boolean {
+		return this.clientSideContextItems.has(key);
 	}
 }
 
@@ -469,15 +469,15 @@ export class RunnableResult {
 
 	private readonly id: string;
 	private readonly tokenBudget: TokenBudget;
-	private readonly requestContext: RequestContext;
+	private readonly contextItemManager: ContextItemManager;
 	private state: ContextRunnableState;
 	private cache: CacheInfo | undefined;
 	public readonly items: ContextItem[];
 
-	constructor(id: string, tokenBudget: TokenBudget, context: RequestContext, cache?: CacheInfo | undefined) {
+	constructor(id: string, tokenBudget: TokenBudget, contextItemManager: ContextItemManager, cache?: CacheInfo | undefined) {
 		this.id = id;
 		this.tokenBudget = tokenBudget;
-		this.requestContext = context;
+		this.contextItemManager = contextItemManager;
 		this.state = ContextRunnableState.Created;
 		this.cache = cache;
 		this.items = [];
@@ -501,20 +501,20 @@ export class RunnableResult {
 		this.cache = cache;
 	}
 
-	public addFromCache(key: string): boolean {
+	public addFromKnownItems(key: string): boolean {
 		this.state = ContextRunnableState.InProgress;
-		const cachedItem = this.requestContext.getCachedContextItem(key);
-		if (cachedItem === undefined) {
+		const reference = this.contextItemManager.createContextItemReference(key);
+		if (reference === undefined) {
 			return false;
 		}
-		this.items.push(ContextItemReference.create(cachedItem.key));
+		this.items.push(reference);
 		return true;
 	}
 
-	public addTrait(traitKind: TraitKind, priority: number, name: string, value: string, document?: FilePath | undefined): void {
+	public addTrait(traitKind: TraitKind, priority: number, name: string, value: string): void {
 		this.state = ContextRunnableState.InProgress;
-		const trait = Trait.create(traitKind, priority, name, value, document);
-		this.items.push(trait);
+		const trait = Trait.create(traitKind, priority, name, value);
+		this.items.push(this.contextItemManager.manageContextItem(trait));
 		this.tokenBudget.spent(Trait.sizeInChars(trait));
 	}
 
@@ -533,7 +533,7 @@ export class RunnableResult {
 		}
 		this.state = ContextRunnableState.InProgress;
 		this.tokenBudget.spent(size);
-		this.items.push(snippet);
+		this.items.push(this.contextItemManager.manageContextItem(snippet));
 		return true;
 	}
 
@@ -572,24 +572,34 @@ class RunnableResultReference {
 	}
 }
 
-export class ContextResult {
+export interface ContextItemManager {
+	createContextItemReference(key: ContextItemKey): ContextItemReference | undefined;
+	manageContextItem(item: FullContextItem): ContextItem;
+}
+
+export class ContextResult implements ContextItemManager {
 
 	public readonly tokenBudget: TokenBudget;
+	public readonly context: RequestContext;
 
 	private state: ContextRequestResultState;
 	private path: number[] | undefined;
 	private timings: Timings | undefined;
 	private timedOut: boolean;
 	private readonly errors: ErrorData[];
-	private readonly runnableResults: (RunnableResult | RunnableResultReference)[] = [];
 
-	constructor(tokenBudget: TokenBudget) {
+	private readonly runnableResults: (RunnableResult | RunnableResultReference)[] = [];
+	private readonly contextItems: Map<ContextItemKey, FullContextItem>;
+
+	constructor(tokenBudget: TokenBudget, context: RequestContext) {
 		this.tokenBudget = tokenBudget;
+		this.context = context;
 		this.state = ContextRequestResultState.Created;
 		this.path = undefined;
 		this.timedOut = false;
 		this.errors = [];
 		this.runnableResults = [];
+		this.contextItems = new Map<ContextItemKey, FullContextItem>();
 	}
 
 	public addPath(path: number[]): void {
@@ -608,9 +618,9 @@ export class ContextResult {
 		this.timedOut = timedOut;
 	}
 
-	public createRunnableResult(id: string, context: RequestContext, cache?: CacheInfo | undefined): RunnableResult {
+	public createRunnableResult(id: string, cache?: CacheInfo | undefined): RunnableResult {
 		this.state = ContextRequestResultState.InProgress;
-		const result = new RunnableResult(id, this.tokenBudget, context, cache);
+		const result = new RunnableResult(id, this.tokenBudget, this, cache);
 		this.runnableResults.push(result);
 		return result;
 	}
@@ -618,6 +628,35 @@ export class ContextResult {
 	public addRunnableResultReference(cached: CachedContextRunnableResult): void {
 		this.state = ContextRequestResultState.InProgress;
 		this.runnableResults.push(new RunnableResultReference(cached));
+	}
+
+	public createContextItemReference(key: ContextItemKey): ContextItemReference | undefined {
+		const clientSide = this.context.createContextItemReference(key);
+		if (clientSide !== undefined) {
+			return clientSide;
+		}
+		const serverSide = this.contextItems.get(key);
+		if (serverSide !== undefined) {
+			return ContextItemReference.create(key);
+		}
+		return undefined;
+	}
+
+	public manageContextItem(item: FullContextItem): ContextItem {
+		if (!ContextItem.hasKey(item)) {
+			return item;
+		}
+		const key = item.key;
+		if (this.context.clientHasContextItem(key)) {
+			// The item is already known on the client side.
+			return ContextItemReference.create(key);
+		}
+		if (this.contextItems.has(key)) {
+			// The item is already known on the server side.
+			return ContextItemReference.create(key);
+		}
+		this.contextItems.set(key, item);
+		return ContextItemReference.create(key);
 	}
 
 	public done(): void {
@@ -644,7 +683,8 @@ export class ContextResult {
 			errors: this.errors,
 			timedOut: this.timedOut,
 			exhausted: this.tokenBudget.isExhausted(),
-			runnableResults: runnableResults
+			runnableResults: runnableResults,
+			contextItems: Array.from(this.contextItems.values())
 		};
 	}
 }
@@ -653,51 +693,6 @@ export enum ComputeCost {
 	Low = 1,
 	Medium = 2,
 	High = 3
-}
-
-export class SeenSymbols {
-
-	private readonly session: ComputeContextSession;
-	private readonly symbols: Set<tt.Symbol> = new Set();
-	private readonly keys: Set<string> = new Set();
-
-	constructor(session: ComputeContextSession, clientEmittedSymbols?: string[]) {
-		this.session = session;
-		this.symbols = new Set();
-		this.keys = clientEmittedSymbols ? new Set(clientEmittedSymbols) : new Set();
-	}
-
-	public add(symbol: tt.Symbol): void {
-		this.symbols.add(symbol);
-		const key = Symbols.createKey(symbol, this.session.host);
-		if (key !== undefined) {
-			this.keys.add(key);
-		}
-	}
-
-	public has(symbol: tt.Symbol): boolean {
-		if (this.symbols.has(symbol)) {
-			return true;
-		}
-		const key = Symbols.createKey(symbol, this.session.host);
-		if (key === undefined) {
-			return false;
-		}
-		if (this.keys.has(key)) {
-			this.symbols.add(symbol);
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	public manages(symbol: tt.Symbol): boolean {
-		if (this.has(symbol)) {
-			return true;
-		}
-		this.add(symbol);
-		return false;
-	}
 }
 
 export type SymbolEmitData = {
@@ -856,10 +851,6 @@ export abstract class AbstractContextRunnable implements ContextRunnable {
 		return this.program;
 	}
 
-	protected getSeenSymbols(): SeenSymbols {
-		return this.context.getSeenSymbols();
-	}
-
 	protected createCacheScope(node: tt.Node, sourceFile?: tt.SourceFile | undefined): CacheScope;
 	protected createCacheScope(node: tt.NodeArray<tt.Node>, sourceFile: tt.SourceFile | undefined): CacheScope;
 	protected createCacheScope(node: tt.Node | tt.NodeArray<tt.Node>, sourceFile?: tt.SourceFile | undefined): CacheScope {
@@ -902,20 +893,13 @@ export abstract class AbstractContextRunnable implements ContextRunnable {
 		return cacheScope !== undefined ? { emitMode, scope: cacheScope } : undefined;
 	}
 
-	protected handleSymbolIfSeenOrCached(result: RunnableResult, symbol: tt.Symbol): [boolean, string | undefined] {
+	protected handleSymbolIfKnown(result: RunnableResult, symbol: tt.Symbol): [boolean, string | undefined] {
 		const key = Symbols.createKey(symbol, this.session.host);
 		if (key === undefined) {
 			return [false, undefined];
 		}
 
-		// We first check seen since this is what we do without cached results.
-		// This ensures we have the same behavior for both cached and non-cached results.
-		const seen = this.getSeenSymbols();
-		if (seen.has(symbol)) {
-			return [true, key];
-		}
-
-		if (result.addFromCache(key)) {
+		if (result.addFromKnownItems(key)) {
 			return [true, key];
 		}
 

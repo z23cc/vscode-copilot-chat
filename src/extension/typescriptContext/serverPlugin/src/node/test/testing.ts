@@ -7,8 +7,8 @@ import assert from 'assert';
 import { type LanguageService } from 'typescript';
 
 import { computeContext as _computeContext } from '../../common/api';
-import { ContextResult, SingleLanguageServiceSession, TokenBudget, type ComputeContextSession } from '../../common/contextProvider';
-import { CodeSnippet, ContextKind, TraitKind, type ContextItem, type Trait } from '../../common/protocol';
+import { ContextResult, RequestContext, SingleLanguageServiceSession, TokenBudget, type ComputeContextSession } from '../../common/contextProvider';
+import { CodeSnippet, ContextKind, type ContextItem, type Trait } from '../../common/protocol';
 import { NullCancellationToken } from '../../common/typescripts';
 import { NodeHost } from '../host';
 import { LanguageServices } from './languageServices';
@@ -46,7 +46,7 @@ function assertTrait(actual: Trait, expected: ExpectedTrait): void {
 	assert.ok(actual.kind === ContextKind.Trait, `Expected trait, got ${actual.kind}`);
 	assert.ok(expected.kind === ContextKind.Trait, `Expected trait, got ${expected.kind}`);
 	assert.strictEqual(actual.name, expected.name);
-	if (actual.traitKind === TraitKind.Version) {
+	if (actual.name.startsWith('The TypeScript version used in this project is')) {
 		assert.ok(semverRegex.test(actual.value), `Expected semver, got ${actual.value}`);
 	} else {
 		assert.strictEqual(actual.value, expected.value);
@@ -110,7 +110,7 @@ export type TestSession = {
 };
 
 export function computeContext(session: TestSession, document: string, position: { line: number; character: number }, contextKind: ContextKind): ContextItem[] {
-	const result: ContextResult = new ContextResult(new TokenBudget(7 * 1024));
+	const result: ContextResult = new ContextResult(new TokenBudget(7 * 1024), new RequestContext(session.session, [], new Map()));
 	const program = session.service.getProgram();
 	if (program === undefined) {
 		return [];
@@ -120,7 +120,7 @@ export function computeContext(session: TestSession, document: string, position:
 		return [];
 	}
 	const pos = sourceFile.getPositionOfLineAndCharacter(position.line, position.character);
-	_computeContext(result, session.session, session.service, document, pos, undefined, [], new NullCancellationToken());
+	_computeContext(result, session.session, session.service, document, pos, new NullCancellationToken());
 	return result.items().filter((item) => item.kind === contextKind);
 }
 

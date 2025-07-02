@@ -36,13 +36,12 @@ export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo | undefined = this.cacheScope !== undefined ? { emitMode: EmitMode.ClientBasedOnTimeout, scope: this.cacheScope } : undefined;
-		return result.createRunnableResult(this.id, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
 		const program = this.getProgram();
 		const symbols = this.symbols;
-		const seen = this.getSeenSymbols();
 		const sourceFile = this.tokenInfo.token.getSourceFile();
 
 		const inScope = this.getModulesAndFunctionsInScope(program, symbols.getTypeChecker(), sourceFile);
@@ -51,14 +50,13 @@ export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
 		// Add functions in scope
 		for (const func of inScope.functions.real) {
 			token.throwIfCancellationRequested();
-			const [handled, key] = this.handleSymbolIfSeenOrCached(result, func);
+			const [handled, key] = this.handleSymbolIfKnown(result, func);
 			if (handled) {
 				continue;
 			}
-			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 			snippetBuilder.addFunctionSymbol(func);
 			result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit);
-			seen.add(func);
 		}
 
 		if (result.isTokenBudgetExhausted()) {
@@ -69,17 +67,15 @@ export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
 		for (const { alias, real } of inScope.functions.aliased) {
 			token.throwIfCancellationRequested();
 
-			const [handled, key] = this.handleSymbolIfSeenOrCached(result, real);
-			if (handled || seen.has(alias)) {
+			const [handled, key] = this.handleSymbolIfKnown(result, real);
+			if (handled) {
 				continue;
 			}
-			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 			snippetBuilder.addFunctionSymbol(real, alias.getName());
 			if (!result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit, true)) {
 				break;
 			}
-			seen.add(alias);
-			seen.add(real);
 		}
 
 		if (result.isTokenBudgetExhausted()) {
@@ -91,17 +87,15 @@ export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
 		for (const { alias, real } of inScope.modules) {
 			token.throwIfCancellationRequested();
 
-			const [handled, key] = this.handleSymbolIfSeenOrCached(result, real);
-			if (handled || seen.has(alias)) {
+			const [handled, key] = this.handleSymbolIfKnown(result, real);
+			if (handled) {
 				continue;
 			}
-			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 			snippetBuilder.addModuleSymbol(real, alias.getName());
 			if (!result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit, true)) {
 				break;
 			}
-			seen.add(alias);
-			seen.add(real);
 		}
 	}
 

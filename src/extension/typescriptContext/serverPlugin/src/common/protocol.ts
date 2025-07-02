@@ -146,9 +146,9 @@ export type Trait = {
 	kind: ContextKind.Trait;
 
 	/**
-	 * The kind of trait.
+	 * An optional key for the trait, used for caching purposes.
 	 */
-	traitKind: TraitKind;
+	key: string;
 
 	/**
 	 * The priority of the trait.
@@ -170,19 +170,10 @@ export type Trait = {
 	 * document and position.
 	 */
 	speculativeKind: SpeculativeKind;
-
-	/**
-	 * An optional key for the trait, used for caching purposes.
-	 */
-	key?: string;
 };
 export namespace Trait {
-	export function create(traitKind: TraitKind, priority: number, name: string, value: string, document?: FilePath | undefined): Trait {
-		if (document === undefined) {
-			return { kind: ContextKind.Trait, traitKind, priority, name, value, speculativeKind: SpeculativeKind.emit };
-		} else {
-			return { kind: ContextKind.Trait, key: createContextItemKey(traitKind), traitKind, priority, name, value, speculativeKind: SpeculativeKind.emit };
-		}
+	export function create(traitKind: TraitKind, priority: number, name: string, value: string): Trait {
+		return { kind: ContextKind.Trait, key: createContextItemKey(traitKind), priority, name, value, speculativeKind: SpeculativeKind.emit };
 	}
 	export function sizeInChars(trait: Trait): number {
 		return trait.name.length + trait.value.length;
@@ -246,7 +237,8 @@ export namespace CodeSnippet {
 	}
 }
 
-export type ContextItem = RelatedFile | Trait | CodeSnippet | ContextItemReference;
+export type FullContextItem = RelatedFile | Trait | CodeSnippet;
+export type ContextItem = FullContextItem | ContextItemReference;
 export namespace ContextItem {
 	export type keyed = { key: ContextItemKey } & ContextItem;
 	export function hasKey(item: ContextItem): item is { key: ContextItemKey } & ContextItem {
@@ -402,6 +394,11 @@ export type ContextRequestResult = {
 	 * The runnable results if any.
 	 */
 	runnableResults?: ContextRunnableResultTypes[];
+
+	/**
+	 * New server side context items that were computed.
+	 */
+	contextItems?: ContextItem[];
 }
 
 export interface ComputeContextRequestArgs extends tt.server.protocol.FileLocationRequestArgs {
@@ -409,7 +406,7 @@ export interface ComputeContextRequestArgs extends tt.server.protocol.FileLocati
 	timeBudget?: number;
 	tokenBudget?: number;
 	neighborFiles?: FilePath[];
-	cachedRunnableResults?: CachedContextRunnableResult[];
+	clientSideRunnableResults?: CachedContextRunnableResult[];
 }
 
 export interface ComputeContextRequest extends tt.server.protocol.Request {

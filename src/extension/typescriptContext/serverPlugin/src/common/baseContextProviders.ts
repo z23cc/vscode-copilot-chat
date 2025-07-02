@@ -11,11 +11,11 @@ import {
 	AbstractContextRunnable, CacheScopes, ComputeCost, ContextProvider, type ComputeContextSession,
 	type ContextResult,
 	type ContextRunnableCollector,
-	type ProviderComputeContext, type RequestContext, type RunnableResult, type SeenSymbols, type SymbolEmitData
+	type ProviderComputeContext, type RequestContext, type RunnableResult, type SymbolEmitData
 } from './contextProvider';
 import {
 	CacheScopeKind, EmitMode, Priorities, SpeculativeKind, Trait, TraitKind, type CacheInfo, type CacheScope,
-	type ContextItemKey, type FilePath
+	type ContextItemKey
 } from './protocol';
 import tss, { Symbols } from './typescripts';
 
@@ -31,25 +31,22 @@ export class CompilerOptionsRunnable extends AbstractContextRunnable {
 		[TraitKind.Lib, 'Library files that should be included in TypeScript compilation are ', Priorities.Traits, Trait.createContextItemKey(TraitKind.Lib), undefined],
 	];
 
-	private readonly document: FilePath;
-
-	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, document: FilePath) {
+	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext) {
 		super(session, languageService, context, CompilerOptionsRunnable.name, Priorities.Traits, ComputeCost.Low);
-		this.document = document;
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo = { emitMode: EmitMode.ClientBased, scope: { kind: CacheScopeKind.File } };
-		return result.createRunnableResult(this.id, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, _token: tt.CancellationToken): void {
 		const compilerOptions = this.getProgram().getCompilerOptions();
-		if (!result.addFromCache(CompilerOptionsRunnable.VersionTraitKey)) {
-			result.addTrait(TraitKind.Version, Priorities.Traits, 'The TypeScript version used in this project is ', ts.version, this.document);
+		if (!result.addFromKnownItems(CompilerOptionsRunnable.VersionTraitKey)) {
+			result.addTrait(TraitKind.Version, Priorities.Traits, 'The TypeScript version used in this project is ', ts.version);
 		}
 		for (const [traitKind, trait, priority, key, enumType,] of CompilerOptionsRunnable.traitsToCollect) {
-			if (result.addFromCache(key)) {
+			if (result.addFromKnownItems(key)) {
 				continue;
 			}
 			let traitValue = compilerOptions[traitKind as keyof tt.CompilerOptions];
@@ -60,7 +57,7 @@ export class CompilerOptionsRunnable extends AbstractContextRunnable {
 						traitValue = enumName;
 					}
 				}
-				result.addTrait(traitKind, priority, trait, traitValue.toString(), this.document);
+				result.addTrait(traitKind, priority, trait, traitValue.toString());
 			}
 		}
 	}
@@ -100,11 +97,10 @@ export class SignatureRunnable extends FunctionLikeContextRunnable {
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const scope = this.getCacheScope();
 		const cacheInfo: CacheInfo | undefined = scope !== undefined ? { emitMode: EmitMode.ClientBased, scope } : undefined;
-		return result.createRunnableResult(this.id, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
-		const seen = this.getSeenSymbols();
 		const parameters = this.declaration.parameters;
 		for (let i = 0; i < parameters.length; i++) {
 			token.throwIfCancellationRequested();
@@ -113,30 +109,29 @@ export class SignatureRunnable extends FunctionLikeContextRunnable {
 			if (type === undefined) {
 				continue;
 			}
-			this.processType(result, type, seen);
+			this.processType(result, type);
 		}
 		const returnType = this.declaration.type;
 		if (returnType !== undefined) {
 			token.throwIfCancellationRequested();
-			this.processType(result, returnType, seen);
+			this.processType(result, returnType);
 		}
 	}
 
-	private processType(result: RunnableResult, type: tt.TypeNode, seen: SeenSymbols): void {
+	private processType(result: RunnableResult, type: tt.TypeNode): void {
 		const symbolsToEmit = this.getSymbolsToEmitForTypeNode(type);
 		if (symbolsToEmit.length === 0) {
 			return;
 		}
 		for (const symbolEmitData of symbolsToEmit) {
 			const symbol = symbolEmitData.symbol;
-			const [handled, key] = this.handleSymbolIfSeenOrCached(result, symbol);
+			const [handled, key] = this.handleSymbolIfKnown(result, symbol);
 			if (handled) {
 				continue;
 			}
-			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, this.sourceFile, seen);
+			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, this.sourceFile);
 			snippetBuilder.addTypeSymbol(symbol, symbolEmitData.name);
 			result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit);
-			seen.add(symbol);
 		}
 	}
 
@@ -177,7 +172,7 @@ export class TypeOfLocalsRunnable extends AbstractContextRunnable {
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo | undefined = this.cacheScope !== undefined ? { emitMode: EmitMode.ClientBasedOnTimeout, scope: this.cacheScope } : undefined;
-		this.runnableResult = result.createRunnableResult(this.id, this.context, cacheInfo);
+		this.runnableResult = result.createRunnableResult(this.id, cacheInfo);
 		return this.runnableResult;
 	}
 
@@ -190,13 +185,12 @@ export class TypeOfLocalsRunnable extends AbstractContextRunnable {
 			return;
 		}
 		const sourceFile = token.getSourceFile();
-		const seen = this.getSeenSymbols();
 		let variableDeclarations: Set<tt.VariableDeclarationList> | undefined = this.cacheScope === undefined ? new Set() : undefined;
 		// The symbols are block scope variables. We try to find the type of the variable
 		// to include it in the context.
 		for (const symbol of inScope) {
 			cancellationToken.throwIfCancellationRequested();
-			if (seen.has(symbol) || this.excludes.has(symbol)) {
+			if (this.excludes.has(symbol)) {
 				continue;
 			}
 			const symbolSourceFile = Symbols.getPrimarySourceFile(symbol);
@@ -224,16 +218,14 @@ export class TypeOfLocalsRunnable extends AbstractContextRunnable {
 			for (const symbolEmitData of symbolsToEmit) {
 				cancellationToken.throwIfCancellationRequested();
 				const symbol = symbolEmitData.symbol;
-				const [handled, key] = this.handleSymbolIfSeenOrCached(result, symbol);
+				const [handled, key] = this.handleSymbolIfKnown(result, symbol);
 				if (handled) {
 					continue;
 				}
-				const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+				const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 				snippetBuilder.addTypeSymbol(symbol, symbolEmitData.name);
 				result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit);
-				seen.add(symbol);
 			}
-			seen.add(symbol);
 
 			if (variableDeclarations !== undefined) {
 				variableDeclarations = this.addScopeNode(variableDeclarations, symbol, ts.SyntaxKind.VariableDeclarationList, sourceFile);
@@ -256,12 +248,11 @@ export class TypesOfNeighborFilesRunnable extends AbstractContextRunnable {
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo = { emitMode: EmitMode.ClientBased, scope: { kind: CacheScopeKind.NeighborFiles } };
-		return result.createRunnableResult(this.id, this.context, cacheInfo);
+		return result.createRunnableResult(this.id, cacheInfo);
 	}
 
 	protected override run(result: RunnableResult, cancellationToken: tt.CancellationToken): void {
 		const symbols = this.symbols;
-		const seen = this.getSeenSymbols();
 		const token = this.tokenInfo.previous ?? this.tokenInfo.token ?? this.tokenInfo.touching;
 		const sourceFile = token.getSourceFile();
 		for (const neighborFile of this.context.neighborFiles) {
@@ -275,7 +266,7 @@ export class TypesOfNeighborFilesRunnable extends AbstractContextRunnable {
 			}
 			const sourceFileSymbol = symbols.getSymbolAtLocation(neighborSourceFile);
 			// The neighbor file might have been seen when importing a value module
-			if (sourceFileSymbol === undefined || seen.has(sourceFileSymbol)) {
+			if (sourceFileSymbol === undefined) {
 				continue;
 			}
 			if (sourceFileSymbol.exports !== undefined) {
@@ -285,14 +276,13 @@ export class TypesOfNeighborFilesRunnable extends AbstractContextRunnable {
 					if ((memberSymbol.flags & (ts.SymbolFlags.Class | ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias | ts.SymbolFlags.Enum | ts.SymbolFlags.Function)) === 0) {
 						continue;
 					}
-					const [handled, key] = this.handleSymbolIfSeenOrCached(result, memberSymbol);
+					const [handled, key] = this.handleSymbolIfKnown(result, memberSymbol);
 					if (handled) {
 						continue;
 					}
 
-					const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+					const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 					snippetBuilder.addTypeSymbol(memberSymbol, member[0] as string);
-					seen.add(memberSymbol);
 					if (!result.addSnippet(snippetBuilder, key, Priorities.NeighborFiles, SpeculativeKind.emit, true)) {
 						return;
 					}
@@ -319,7 +309,7 @@ export class TypeOfImportsRunnable extends AbstractContextRunnable {
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
 		const cacheInfo: CacheInfo | undefined = this.defaultCacheScope !== undefined ? { emitMode: EmitMode.ClientBased, scope: this.defaultCacheScope } : undefined;
-		this.runnableResult = result.createRunnableResult(this.id, this.context, cacheInfo);
+		this.runnableResult = result.createRunnableResult(this.id, cacheInfo);
 		return this.runnableResult;
 	}
 
@@ -335,7 +325,6 @@ export class TypeOfImportsRunnable extends AbstractContextRunnable {
 			return;
 		}
 		const sourceFile = token.getSourceFile();
-		const seen = this.getSeenSymbols();
 		let importDeclarations: Set<tt.ImportDeclaration> | undefined = new Set();
 		for (const symbol of typesInScope) {
 			cancellationToken.throwIfCancellationRequested();
@@ -367,15 +356,14 @@ export class TypeOfImportsRunnable extends AbstractContextRunnable {
 			} else if (symbolSourceFile === sourceFile) {
 				continue;
 			}
-			const [handled, key] = this.handleSymbolIfSeenOrCached(result, contextSymbol);
+			const [handled, key] = this.handleSymbolIfKnown(result, contextSymbol);
 			if (handled) {
 				continue;
 			}
 
-			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 			snippetBuilder.addTypeSymbol(contextSymbol, name);
 			const full = !result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit, true);
-			seen.add(contextSymbol);
 			if (full) {
 				break;
 			}
@@ -433,7 +421,7 @@ export class TypeOfExpressionRunnable extends AbstractContextRunnable {
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
-		return result.createRunnableResult(this.id, this.context);
+		return result.createRunnableResult(this.id);
 	}
 
 	protected override run(result: RunnableResult, token: tt.CancellationToken): void {
@@ -442,10 +430,6 @@ export class TypeOfExpressionRunnable extends AbstractContextRunnable {
 			return;
 		}
 		const typeChecker = this.symbols.getTypeChecker();
-		const seen = this.getSeenSymbols();
-		if (seen.has(expSymbol)) {
-			return;
-		}
 		const type = typeChecker.getTypeOfSymbolAtLocation(expSymbol, this.expression);
 		const signatures = type.getConstructSignatures().concat(type.getCallSignatures());
 		const sourceFile = this.expression.getSourceFile();
@@ -453,21 +437,20 @@ export class TypeOfExpressionRunnable extends AbstractContextRunnable {
 			token.throwIfCancellationRequested();
 			const returnType = signature.getReturnType();
 			const returnTypeSymbol = returnType.aliasSymbol ?? returnType.getSymbol();
-			if (returnTypeSymbol === undefined || seen.has(returnTypeSymbol)) {
+			if (returnTypeSymbol === undefined) {
 				continue;
 			}
-			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 			snippetBuilder.addTypeSymbol(returnTypeSymbol, returnTypeSymbol.name);
 			result.addSnippet(snippetBuilder, undefined, this.priority, SpeculativeKind.ignore);
 		}
 		const typeSymbol = type.getSymbol();
-		if (typeSymbol === undefined || seen.has(typeSymbol)) {
+		if (typeSymbol === undefined) {
 			return;
 		}
-		const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile, seen);
+		const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
 		snippetBuilder.addTypeSymbol(typeSymbol, typeSymbol.name);
 		result.addSnippet(snippetBuilder, undefined, this.priority, SpeculativeKind.ignore);
-		seen.add(typeSymbol);
 	}
 }
 

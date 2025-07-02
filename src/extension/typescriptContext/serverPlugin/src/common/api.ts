@@ -12,7 +12,7 @@ import { ContextProvider, ContextRunnableCollector, RecoverableError, RequestCon
 import { FunctionContextProvider } from './functionContextProvider';
 import { ConstructorContextProvider, MethodContextProvider } from './methodContextProvider';
 import { ModuleContextProvider } from './moduleContextProvider';
-import { type CachedContextRunnableResult, type CacheScope, type ContextRunnableResultId, type FilePath, type Range } from './protocol';
+import { type CacheScope, type FilePath, type Range } from './protocol';
 import { SourceFileContextProvider } from './sourceFileContextProvider';
 import tss from './typescripts';
 
@@ -74,30 +74,17 @@ class ContextProviders {
 		[ts.SyntaxKind.ModuleDeclaration, (node, tokenInfo, computeContext) => new ModuleContextProvider(node as tt.ModuleDeclaration, tokenInfo, computeContext)],
 	]);
 
-	private readonly document: FilePath;
 	private readonly tokenInfo: tss.TokenInfo;
 	private readonly computeInfo: ProviderComputeContextImpl;
-	private readonly neighborFiles: readonly string[] | undefined;
-	private readonly cachedContextRunnableResults: Map<ContextRunnableResultId, CachedContextRunnableResult>;
 
 
-	constructor(document: FilePath, tokenInfo: tss.TokenInfo, neighborFiles: readonly string[] | undefined, cachedContextRunnableResults: readonly CachedContextRunnableResult[]) {
-		this.document = document;
+	constructor(tokenInfo: tss.TokenInfo) {
 		this.tokenInfo = tokenInfo;
 		this.computeInfo = new ProviderComputeContextImpl();
-		this.neighborFiles = neighborFiles;
-		this.cachedContextRunnableResults = new Map<ContextRunnableResultId, CachedContextRunnableResult>(cachedContextRunnableResults.map(item => [item.id, item]));
 	}
 
 	public execute(result: ContextResult, session: ComputeContextSession, languageService: tt.LanguageService, token: tt.CancellationToken): void {
-		const normalizedPaths: tt.server.NormalizedPath[] = [];
-		if (this.neighborFiles !== undefined) {
-			for (const file of this.neighborFiles) {
-				normalizedPaths.push(ts.server.toNormalizedPath(file));
-			}
-		}
-		const requestContext = new RequestContext(session, normalizedPaths, this.cachedContextRunnableResults);
-		const collector = this.getContextRunnables(session, languageService, requestContext, token);
+		const collector = this.getContextRunnables(session, languageService, result.context, token);
 		result.addPath(tss.StableSyntaxKinds.getPath(this.tokenInfo.touching ?? this.tokenInfo.token));
 		for (const runnable of collector.entries()) {
 			runnable.initialize(result);
@@ -124,8 +111,8 @@ class ContextProviders {
 	}
 
 	private getContextRunnables(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): ContextRunnableCollector {
-		const result: ContextRunnableCollector = new ContextRunnableCollector(this.cachedContextRunnableResults);
-		result.addPrimary(new CompilerOptionsRunnable(session, languageService, context, this.document));
+		const result: ContextRunnableCollector = new ContextRunnableCollector(context.clientSideRunnableResults);
+		result.addPrimary(new CompilerOptionsRunnable(session, languageService, context));
 		const providers = this.computeProviders();
 		for (const provider of providers) {
 			provider.provide(result, session, languageService, context, token);
@@ -163,7 +150,7 @@ class ContextProviders {
 	}
 }
 
-export function computeContext(result: ContextResult, session: ComputeContextSession, languageService: tt.LanguageService, document: FilePath, position: number, neighborFiles: readonly string[] | undefined, cachedRunnableResults: readonly CachedContextRunnableResult[], token: tt.CancellationToken): void {
+export function computeContext(result: ContextResult, session: ComputeContextSession, languageService: tt.LanguageService, document: FilePath, position: number, token: tt.CancellationToken): void {
 	const program = languageService.getProgram();
 	if (program === undefined) {
 		return;
@@ -174,6 +161,6 @@ export function computeContext(result: ContextResult, session: ComputeContextSes
 	}
 
 	const tokenInfo = tss.getRelevantTokens(sourceFile, position);
-	const providers = new ContextProviders(document, tokenInfo, neighborFiles, cachedRunnableResults);
+	const providers = new ContextProviders(tokenInfo);
 	providers.execute(result, session, languageService, token);
 }

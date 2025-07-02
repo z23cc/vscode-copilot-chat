@@ -14,6 +14,7 @@ import { Disposable } from '../../../util/vs/base/common/lifecycle';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
 import { BYOKAuthType, BYOKKnownModels, BYOKModelConfig, BYOKModelRegistry, isBYOKEnabled } from '../../byok/common/byokProvider';
 import { AnthropicBYOKModelRegistry } from '../../byok/vscode-node/anthropicProvider';
+import { AzureFoundryLocalBYOKModelRegistry } from '../../byok/vscode-node/azureFoundryLocalProvider';
 import { AzureBYOKModelRegistry } from '../../byok/vscode-node/azureProvider';
 import { OAIBYOKModelRegistry } from '../../byok/vscode-node/openAIProvider';
 import { IExtensionContribution } from '../../common/contributions';
@@ -69,6 +70,7 @@ export class BYOKContrib extends Disposable implements IExtensionContribution {
 			// They will be shown to the user in the same order.
 			this._modelRegistries.push(instantiationService.createInstance(AnthropicBYOKModelRegistry));
 			this._modelRegistries.push(instantiationService.createInstance(AzureBYOKModelRegistry));
+			this._modelRegistries.push(instantiationService.createInstance(AzureFoundryLocalBYOKModelRegistry));
 			if (authService.copilotToken.isInternal) {
 				this._modelRegistries.push(instantiationService.createInstance(CerebrasModelRegistry));
 			}

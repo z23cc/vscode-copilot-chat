@@ -15,7 +15,15 @@
 		{
 			"label": "ensure-deps",
 			"type": "shell",
-			"command": "test -d node_modules || npm install",
+			"windows": {
+				"command": "if not exist node_modules npm install"
+			},
+			"linux": {
+				"command": "test -d node_modules || npm install"
+			},
+			"osx": {
+				"command": "test -d node_modules || npm install"
+			},
 			"group": "build",
 			"presentation": {
 				"reveal": "never",

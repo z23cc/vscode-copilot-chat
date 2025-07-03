@@ -98,9 +98,6 @@ export class RequestContext {
 		this.clientSideRunnableResults = clientSideRunnableResults;
 		this.clientSideContextItems = new Map();
 		for (const rr of clientSideRunnableResults.values()) {
-			if (rr.emitMode !== EmitMode.ClientBased) {
-				continue;
-			}
 			for (const item of rr.items) {
 				this.clientSideContextItems.set(item.key, item);
 			}
@@ -129,7 +126,9 @@ export class RequestContext {
 
 	public createContextItemReferenceIfManaged(key: ContextItemKey): ContextItemReference | undefined {
 		const cachedItem = this.clientSideContextItems.get(key);
-		return cachedItem !== undefined ? ContextItemReference.create(cachedItem.key) : undefined;
+		return cachedItem !== undefined
+			? ContextItemReference.create(cachedItem.key)
+			: undefined;
 	}
 
 	public clientHasContextItem(key: ContextItemKey): boolean {
@@ -777,6 +776,7 @@ export namespace CacheScopes {
 }
 
 export interface ContextRunnable {
+	readonly id: ContextRunnableResultId;
 	readonly priority: number;
 	readonly cost: ComputeCost;
 	initialize(result: ContextResult): void;
@@ -787,11 +787,14 @@ class CacheBasedContextRunnable implements ContextRunnable {
 
 	private readonly cached: CachedContextRunnableResult;
 	private tokenBudget: TokenBudget | undefined;
+
+	public readonly id: ContextRunnableResultId;
 	public readonly priority: number;
 	public readonly cost: ComputeCost;
 
 	constructor(cached: CachedContextRunnableResult, priority: number, cost: ComputeCost) {
 		this.cached = cached;
+		this.id = cached.id;
 		this.priority = priority;
 		this.cost = cost;
 	}
@@ -820,7 +823,7 @@ export abstract class AbstractContextRunnable implements ContextRunnable {
 	protected readonly context: RequestContext;
 	protected readonly symbols: Symbols;
 
-	public readonly id: string;
+	public readonly id: ContextRunnableResultId;
 	public readonly priority: number;
 	public readonly cost: ComputeCost;
 
@@ -1038,7 +1041,7 @@ export class ContextRunnableCollector {
 	}
 
 	private checkRunnable(runnable: ContextRunnable): ContextRunnable {
-		const cached = this.cachedRunnableResults.get(runnable.constructor.name);
+		const cached = this.cachedRunnableResults.get(runnable.id);
 		if (cached === undefined) {
 			return runnable;
 		}

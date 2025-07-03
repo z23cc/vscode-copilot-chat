@@ -798,10 +798,14 @@ class RunnableResultManager implements vscode.Disposable {
 			return { resolved: [], cached: cachedItems, referenced: referencedItems };
 		}
 
+		const serverItems: Set<protocol.ContextItemKey> = new Set();
 		// Add new client side context items to the item map.
 		if (body.contextItems !== undefined && body.contextItems.length > 0) {
 			for (const item of body.contextItems) {
-				itemMap.set(item.key, item);
+				if (protocol.ContextItem.hasKey(item)) {
+					itemMap.set(item.key, item);
+					serverItems.add(item.key);
+				}
 			}
 		}
 		const updateRunnableResult = (resultItem: protocol.ContextRunnableResultTypes): ResolvedRunnableResult | undefined => {
@@ -814,6 +818,9 @@ class RunnableResultManager implements vscode.Disposable {
 						if (referenced !== undefined) {
 							referencedItems++;
 							items.push(referenced);
+							if (!serverItems.has(contextItem.key)) {
+								cachedItems++;
+							}
 						}
 					} else {
 						items.push(contextItem);

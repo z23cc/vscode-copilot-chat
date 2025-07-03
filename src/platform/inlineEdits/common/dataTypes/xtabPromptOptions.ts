@@ -24,8 +24,10 @@ export type PagedClipping = { pageSize: number };
 
 export type PromptOptions = {
 	readonly promptingStrategy: PromptingStrategy | undefined /* default */;
-	readonly currentFileMaxTokens: number;
-	readonly includeTagsInCurrentFile: boolean;
+	readonly currentFile: {
+		readonly maxTokens: number;
+		readonly includeTags: boolean;
+	};
 	readonly pagedClipping: PagedClipping;
 	readonly recentlyViewedDocuments: RecentlyViewedDocumentsOptions;
 	readonly languageContext: LanguageContextOptions;
@@ -40,8 +42,10 @@ export enum PromptingStrategy {
 
 export const DEFAULT_OPTIONS: PromptOptions = {
 	promptingStrategy: undefined,
-	currentFileMaxTokens: 2000,
-	includeTagsInCurrentFile: true,
+	currentFile: {
+		maxTokens: 2000,
+		includeTags: true,
+	},
 	pagedClipping: {
 		pageSize: 10,
 	},

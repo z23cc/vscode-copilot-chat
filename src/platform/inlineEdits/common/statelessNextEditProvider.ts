@@ -335,6 +335,7 @@ export interface IStatelessNextEditTelemetry {
 
 	/* general info */
 	readonly statelessNextEditProviderDuration: number;
+	readonly isCursorAtEndOfLine: boolean | undefined;
 
 	/* options info */
 	readonly logProbThreshold: number | undefined;
@@ -429,6 +430,7 @@ export class StatelessNextEditTelemetryBuilder {
 			prompt,
 			promptLineCount,
 			promptCharCount,
+			isCursorAtEndOfLine: this._isCursorAtLineEnd,
 			debounceTime: this._debounceTime,
 			artificialDelay: this._artificialDelay,
 			fetchStartedAt: this._fetchStartedAt,
@@ -456,6 +458,12 @@ export class StatelessNextEditTelemetryBuilder {
 	private _prompt: Raw.ChatMessage[] | undefined;
 	public setPrompt(prompt: Raw.ChatMessage[]): this {
 		this._prompt = prompt;
+		return this;
+	}
+
+	private _isCursorAtLineEnd: boolean | undefined;
+	public setIsCursorAtLineEnd(isCursorAtLineEnd: boolean): this {
+		this._isCursorAtLineEnd = isCursorAtLineEnd;
 		return this;
 	}
 

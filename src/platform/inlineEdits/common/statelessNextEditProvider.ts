@@ -336,6 +336,7 @@ export interface IStatelessNextEditTelemetry {
 	/* general info */
 	readonly statelessNextEditProviderDuration: number;
 	readonly isCursorAtEndOfLine: boolean | undefined;
+	readonly nLinesOfCurrentFileInPrompt: number | undefined;
 
 	/* options info */
 	readonly logProbThreshold: number | undefined;
@@ -427,6 +428,7 @@ export class StatelessNextEditTelemetryBuilder {
 
 			statelessNextEditProviderDuration: timeSpent,
 			logProbThreshold: this._logProbThreshold,
+			nLinesOfCurrentFileInPrompt: this._nLinesOfCurrentFileInPrompt,
 			prompt,
 			promptLineCount,
 			promptCharCount,
@@ -452,6 +454,12 @@ export class StatelessNextEditTelemetryBuilder {
 	private _hadLowLogProbSuggestion: boolean | undefined;
 	public setHadLowLogProbSuggestion(hadLowLogProbSuggestions: boolean): this {
 		this._hadLowLogProbSuggestion = hadLowLogProbSuggestions;
+		return this;
+	}
+
+	private _nLinesOfCurrentFileInPrompt: number | undefined;
+	public setNLinesOfCurrentFileInPrompt(nLines: number): this {
+		this._nLinesOfCurrentFileInPrompt = nLines;
 		return this;
 	}
 

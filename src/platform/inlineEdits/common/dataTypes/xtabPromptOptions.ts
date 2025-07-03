@@ -22,12 +22,15 @@ export type DiffHistoryOptions = {
 
 export type PagedClipping = { pageSize: number };
 
+export type CurrentFileOptions = {
+	readonly maxTokens: number;
+	readonly includeTags: boolean;
+	readonly prioritizeAboveCursor: boolean;
+}
+
 export type PromptOptions = {
 	readonly promptingStrategy: PromptingStrategy | undefined /* default */;
-	readonly currentFile: {
-		readonly maxTokens: number;
-		readonly includeTags: boolean;
-	};
+	readonly currentFile: CurrentFileOptions;
 	readonly pagedClipping: PagedClipping;
 	readonly recentlyViewedDocuments: RecentlyViewedDocumentsOptions;
 	readonly languageContext: LanguageContextOptions;
@@ -45,6 +48,7 @@ export const DEFAULT_OPTIONS: PromptOptions = {
 	currentFile: {
 		maxTokens: 2000,
 		includeTags: true,
+		prioritizeAboveCursor: false,
 	},
 	pagedClipping: {
 		pageSize: 10,

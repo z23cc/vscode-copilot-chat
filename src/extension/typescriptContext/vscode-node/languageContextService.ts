@@ -192,7 +192,7 @@ namespace Stats {
 			},
 		};
 	}
-	export function update(stats: Stats, runnableResult: protocol.ContextRunnableResult): void {
+	export function update(stats: Stats, runnableResult: ResolvedRunnableResult): void {
 		let size: number = 0;
 		for (const item of runnableResult.items) {
 			stats.total++;
@@ -640,11 +640,11 @@ type RequestInfo = {
 };
 
 type ContextRequestState = {
-	client: readonly protocol.ContextRunnableResult[];
-	clientOnTimeout: readonly protocol.ContextRunnableResult[];
+	client: readonly ResolvedRunnableResult[];
+	clientOnTimeout: readonly ResolvedRunnableResult[];
 	server: readonly protocol.CachedContextRunnableResult[];
-	resultMap: Map<protocol.ContextRunnableResultId, protocol.ContextRunnableResult>;
-	itemMap: Map<protocol.ContextItemKey, protocol.ContextItem>;
+	resultMap: Map<protocol.ContextRunnableResultId, ResolvedRunnableResult>;
+	itemMap: Map<protocol.ContextItemKey, protocol.FullContextItem>;
 };
 
 type CacheInfo = {
@@ -658,13 +658,30 @@ enum CacheState {
 	FullyPopulated = 'FullyPopulated'
 }
 
-class RunnableResultCache implements vscode.Disposable {
+type ResolvedRunnableResult = {
+	id: protocol.ContextRunnableResultId;
+	state: protocol.ContextRunnableState;
+	items: protocol.FullContextItem[];
+	cache?: protocol.CacheInfo;
+}
+namespace ResolvedRunnableResult {
+	export function from(result: protocol.ContextRunnableResult, items: protocol.FullContextItem[]): ResolvedRunnableResult {
+		return {
+			id: result.id,
+			state: result.state,
+			items: items,
+			cache: result.cache
+		};
+	}
+}
+
+class RunnableResultManager implements vscode.Disposable {
 
 	private readonly disposables = new DisposableStore();
 	private requestInfo: RequestInfo | undefined;
 
 	private cacheInfo: CacheInfo;
-	private results: Map<protocol.ContextRunnableResultId, protocol.ContextRunnableResult>;
+	private results: Map<protocol.ContextRunnableResultId, ResolvedRunnableResult>;
 	private readonly withInRangeRunnableResults: { resultId: protocol.ContextRunnableResultId; range: vscode.Range }[];
 	private readonly outsideRangeRunnableResults: { resultId: protocol.ContextRunnableResultId; ranges: vscode.Range[] }[] = [];
 	private readonly neighborFileRunnableResults: { resultId: protocol.ContextRunnableResultId }[];
@@ -753,7 +770,7 @@ class RunnableResultCache implements vscode.Disposable {
 		return this.cacheInfo.state;
 	}
 
-	public update(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, body: protocol.ComputeContextResponse.OK, requestState: ContextRequestState | undefined): { cached: number; referenced: number } {
+	public update(document: vscode.TextDocument, version: number, position: vscode.Position, context: RequestContext, body: protocol.ComputeContextResponse.OK, requestState: ContextRequestState | undefined): { resolved: ResolvedRunnableResult[]; cached: number; referenced: number } {
 		const itemMap = requestState?.itemMap ?? new Map();
 		const usedResults = requestState?.resultMap ?? new Map();
 
@@ -762,7 +779,7 @@ class RunnableResultCache implements vscode.Disposable {
 		this.neighborFileRunnableResults.length = 0;
 		this.results = new Map();
 		this.cacheInfo = {
-			version: document.version,
+			version: version,
 			state: CacheState.NotPopulated
 		};
 
@@ -770,7 +787,7 @@ class RunnableResultCache implements vscode.Disposable {
 		let referencedItems = 0;
 		this.requestInfo = {
 			document: document.uri.toString(),
-			version: document.version,
+			version: version,
 			languageId: document.languageId,
 			position: position,
 			requestId: context.requestId,
@@ -778,29 +795,31 @@ class RunnableResultCache implements vscode.Disposable {
 		};
 
 		if (body.runnableResults === undefined || body.runnableResults.length === 0) {
-			return { cached: cachedItems, referenced: referencedItems };
+			return { resolved: [], cached: cachedItems, referenced: referencedItems };
 		}
 
-		const updateRunnableResult = (resultItem: protocol.ContextRunnableResultTypes): void => {
-			let result: protocol.ContextRunnableResult | undefined;
+		// Add new client side context items to the item map.
+		if (body.contextItems !== undefined && body.contextItems.length > 0) {
+			for (const item of body.contextItems) {
+				itemMap.set(item.key, item);
+			}
+		}
+		const updateRunnableResult = (resultItem: protocol.ContextRunnableResultTypes): ResolvedRunnableResult | undefined => {
+			let result: ResolvedRunnableResult | undefined;
 			if (resultItem.kind === protocol.ContextRunnableResultKind.ComputedResult) {
-				const items: protocol.ContextItem[] = [];
+				const items: protocol.FullContextItem[] = [];
 				for (const contextItem of resultItem.items) {
-					let item: protocol.ContextItem | undefined;
 					if (contextItem.kind === protocol.ContextKind.Reference) {
-						item = itemMap.get(contextItem.key);
-						if (item === undefined) {
+						const referenced: protocol.FullContextItem | undefined = itemMap.get(contextItem.key);
+						if (referenced !== undefined) {
 							referencedItems++;
+							items.push(referenced);
 						}
 					} else {
-						item = contextItem;
-					}
-					if (item !== undefined) {
-						items.push(item);
+						items.push(contextItem);
 					}
 				}
-				resultItem.items = items;
-				result = resultItem;
+				result = ResolvedRunnableResult.from(resultItem, items);
 			} else if (resultItem.kind === protocol.ContextRunnableResultKind.Reference) {
 				result = usedResults.get(resultItem.id);
 				if (result !== undefined) {
@@ -827,12 +846,17 @@ class RunnableResultCache implements vscode.Disposable {
 				}
 			}
 			this.updateCacheState(result.state);
+			return result;
 		};
 
+		const results: ResolvedRunnableResult[] = [];
 		for (const runnableResult of body.runnableResults) {
-			updateRunnableResult(runnableResult);
+			const result = updateRunnableResult(runnableResult);
+			if (result !== undefined) {
+				results.push(result);
+			}
 		}
-		return { cached: cachedItems, referenced: referencedItems };
+		return { resolved: results, cached: cachedItems, referenced: referencedItems };
 	}
 
 	private updateCacheState(state: protocol.ContextRunnableState): void {
@@ -877,7 +901,7 @@ class RunnableResultCache implements vscode.Disposable {
 		return this.requestInfo?.path ?? [0];
 	}
 
-	public getRunnableResult(id: protocol.ContextRunnableResultId): protocol.ContextRunnableResult | undefined {
+	public getRunnableResult(id: protocol.ContextRunnableResultId): ResolvedRunnableResult | undefined {
 		return this.results.get(id);
 	}
 
@@ -889,16 +913,16 @@ class RunnableResultCache implements vscode.Disposable {
 			this.clear();
 			return undefined;
 		}
-		const items: Map<protocol.ContextItemKey, protocol.ContextItem> = new Map();
-		const client: protocol.ContextRunnableResult[] = [];
-		const clientOnTimeout: protocol.ContextRunnableResult[] = [];
+		const items: Map<protocol.ContextItemKey, protocol.FullContextItem> = new Map();
+		const client: ResolvedRunnableResult[] = [];
+		const clientOnTimeout: ResolvedRunnableResult[] = [];
 		const server: protocol.CachedContextRunnableResult[] = [];
 		if (this.isCacheFullyUpToDate(document, position)) {
 			for (const item of this.results.values()) {
 				client.push(item);
 			}
 		} else {
-			const handleRunnableResult = (id: string, rr: protocol.ContextRunnableResult) => {
+			const handleRunnableResult = (id: string, rr: ResolvedRunnableResult) => {
 				const cache = rr.cache;
 				const cachedResult: protocol.CachedContextRunnableResult = {
 					id: id,
@@ -1067,9 +1091,6 @@ class RunnableResultCache implements vscode.Disposable {
 
 class ContextItemResultBuilder implements ContextItemSummary {
 
-	private readonly runnableResultCache: RunnableResultCache;
-	private readonly logService: ILogService;
-
 	private readonly seenRunnableResults: Set<protocol.ContextRunnableResultId>;
 	private readonly seenContextItems: Set<protocol.ContextItemKey>;
 
@@ -1085,9 +1106,7 @@ class ContextItemResultBuilder implements ContextItemSummary {
 	public contextComputeTime: number;
 	public fromCache: boolean;
 
-	constructor(runnableResultCache: RunnableResultCache, logService: ILogService) {
-		this.runnableResultCache = runnableResultCache;
-		this.logService = logService;
+	constructor() {
 		this.seenRunnableResults = new Set();
 		this.seenContextItems = new Set();
 
@@ -1113,46 +1132,17 @@ class ContextItemResultBuilder implements ContextItemSummary {
 		this.cancelled = token.isCancellationRequested;
 	}
 
-	public *update(item: protocol.ContextRunnableResultTypes, itemMap: Map<protocol.ContextItemKey, protocol.ContextItem>, fromCache: boolean = false): IterableIterator<ContextItem> {
-		if (this.seenRunnableResults.has(item.id)) {
+	public *update(runnableResult: ResolvedRunnableResult, fromCache: boolean = false): IterableIterator<ContextItem> {
+		if (this.seenRunnableResults.has(runnableResult.id)) {
 			return;
 		}
-		this.seenRunnableResults.add(item.id);
-		let runnableResult: protocol.ContextRunnableResult | undefined;
-		if (item.kind === protocol.ContextRunnableResultKind.Reference) {
-			runnableResult = this.runnableResultCache.getRunnableResult(item.id);
-			if (runnableResult !== undefined) {
-				this.cachedItems += runnableResult.items.length;
-			}
-		} else if (item.kind === protocol.ContextRunnableResultKind.ComputedResult) {
-			runnableResult = item;
-			if (fromCache) {
-				this.cachedItems += runnableResult.items.length;
-			}
-		}
-		if (runnableResult === undefined) {
-			this.logService.logger.warn(`Runnable result not found in cache: ${item.id}`);
-			return;
-		}
+		this.seenRunnableResults.add(runnableResult.id);
 		Stats.update(this.stats, runnableResult);
 		for (const item of runnableResult.items) {
-			let contextItem: protocol.ContextItem | undefined;
-			if (item.kind === protocol.ContextKind.Reference) {
-				contextItem = itemMap.get(item.key);
-				if (contextItem !== undefined) {
-					this.referencedItems++;
-				}
-			} else {
-				contextItem = item;
-			}
-			if (contextItem === undefined) {
-				this.logService.logger.warn(`Context item not found in cache: ${item.key}`);
+			if (protocol.ContextItem.hasKey(item) && this.seenContextItems.has(item.key)) {
 				continue;
 			}
-			if (protocol.ContextItem.hasKey(contextItem) && this.seenContextItems.has(contextItem.key)) {
-				continue;
-			}
-			const converted = ContextItemResultBuilder.doConvert(contextItem);
+			const converted = ContextItemResultBuilder.doConvert(item);
 			if (converted === undefined) {
 				continue;
 			}
@@ -1161,29 +1151,10 @@ class ContextItemResultBuilder implements ContextItemSummary {
 		}
 	}
 
-	public *convert(item: protocol.ContextRunnableResultTypes, itemMap: Map<protocol.ContextItemKey, protocol.ContextItem>): IterableIterator<ContextItem> {
-		let runnableResult: protocol.ContextRunnableResult | undefined;
-		if (item.kind === protocol.ContextRunnableResultKind.Reference) {
-			runnableResult = this.runnableResultCache.getRunnableResult(item.id);
-		} else {
-			runnableResult = item;
-		}
-		if (runnableResult === undefined) {
-			this.logService.logger.warn(`Runnable result not found in cache: ${item.id}`);
-			return;
-		}
+	public *convert(runnableResult: ResolvedRunnableResult): IterableIterator<ContextItem> {
 		Stats.update(this.stats, runnableResult);
 		for (const item of runnableResult.items) {
-			let contextItem: protocol.ContextItem | undefined;
-			if (item.kind === protocol.ContextKind.Reference) {
-				contextItem = itemMap.get(item.key);
-			} else {
-				contextItem = item;
-			}
-			if (contextItem === undefined) {
-				continue;
-			}
-			const converted = ContextItemResultBuilder.doConvert(contextItem);
+			const converted = ContextItemResultBuilder.doConvert(item);
 			if (converted === undefined) {
 				continue;
 			}
@@ -1391,11 +1362,11 @@ type ComputeContextRequestArgs = {
 	timeBudget?: number;
 	tokenBudget?: number;
 	neighborFiles?: readonly string[];
-	cachedRunnableResults?: readonly protocol.CachedContextRunnableResult[];
+	clientSideRunnableResults?: readonly protocol.CachedContextRunnableResult[];
 	$traceId?: string;
 };
 namespace ComputeContextRequestArgs {
-	export function create(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, startTime: number, timeBudget: number, neighborFiles: readonly string[] | undefined, cachedRunnableResults: readonly protocol.CachedContextRunnableResult[] | undefined): ComputeContextRequestArgs {
+	export function create(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, startTime: number, timeBudget: number, neighborFiles: readonly string[] | undefined, clientSideRunnableResults: readonly protocol.CachedContextRunnableResult[] | undefined): ComputeContextRequestArgs {
 		return {
 			file: vscode.Uri.file(document.fileName),
 			line: position.line + 1,
@@ -1404,7 +1375,7 @@ namespace ComputeContextRequestArgs {
 			timeBudget: timeBudget,
 			tokenBudget: context.tokenBudget ?? 7 * 1024,
 			neighborFiles: neighborFiles !== undefined && neighborFiles.length > 0 ? neighborFiles : undefined,
-			cachedRunnableResults: cachedRunnableResults,
+			clientSideRunnableResults: clientSideRunnableResults,
 			$traceId: context.requestId
 		};
 	}
@@ -1420,11 +1391,11 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 	private _isActivated: Promise<boolean> | undefined;
 	private telemetrySender: TelemetrySender;
 
-	private readonly runnableResultCache: RunnableResultCache;
+	private readonly runnableResultManager: RunnableResultManager;
 	private readonly neighborFileModel: NeighborFileModel;
 
 	private inflightCancellationToken: DelayedCancellationToken | undefined;
-	private onTimeOut: { requestId: string; results: readonly protocol.ContextRunnableResult[] | undefined; contextItemResult: ContextItemResultBuilder; itemMap: Map<protocol.ContextItemKey, protocol.ContextItem> } | undefined;
+	private onTimeOut: { requestId: string; results: readonly ResolvedRunnableResult[] | undefined; contextItemResult: ContextItemResultBuilder; itemMap: Map<protocol.ContextItemKey, protocol.ContextItem> } | undefined;
 	private readonly cachePopulationTimeout: number;
 
 	constructor(
@@ -1435,7 +1406,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 	) {
 		this.isDebugging = process.execArgv.some((arg) => /^--(?:inspect|debug)(?:-brk)?(?:=\d+)?$/i.test(arg));
 		this.telemetrySender = new TelemetrySender(telemetryService, logService);
-		this.runnableResultCache = new RunnableResultCache();
+		this.runnableResultManager = new RunnableResultManager();
 		this.neighborFileModel = new NeighborFileModel();
 		this.inflightCancellationToken = undefined;
 		this.onTimeOut = undefined;
@@ -1443,7 +1414,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 	}
 
 	public dispose(): void {
-		this.runnableResultCache.dispose();
+		this.runnableResultManager.dispose();
 		this.neighborFileModel.dispose();
 		this.inflightCancellationToken = undefined;
 	}
@@ -1503,7 +1474,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 			return;
 		}
 		const startTime = Date.now();
-		const contextRequestState = this.runnableResultCache.getContextRequestState(document, position);
+		const contextRequestState = this.runnableResultManager.getContextRequestState(document, position);
 		if (contextRequestState !== undefined && contextRequestState.server.length === 0) {
 			// There is nothing to do on the server. Cache is up to date.
 			return;
@@ -1518,7 +1489,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 			const token = tokenSource.token;
 			const documentVersion = document.version;
 			const start = Date.now();
-			const cacheState = this.runnableResultCache.getCacheState();
+			const cacheState = this.runnableResultManager.getCacheState();
 			let response: protocol.ComputeContextResponse;
 			try {
 				response = await vscode.commands.executeCommand('typescript.tsserverRequest', '_.copilot.context', args, LanguageContextServiceImpl.ExecConfig, token);
@@ -1531,24 +1502,20 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 				return;
 			} else if (protocol.ComputeContextResponse.isOk(response)) {
 				const body: protocol.ComputeContextResponse.OK = response.body;
-				const contextItemResult = new ContextItemResultBuilder(this.runnableResultCache, this.logService);
-				if (documentVersion === document.version) {
-					const { cached, referenced } = this.runnableResultCache.update(document, position, context, body, contextRequestState);
-					contextItemResult.cachedItems += cached;
-					contextItemResult.referencedItems += referenced;
-				}
-				if (body.runnableResults !== undefined && forDebugging !== undefined) {
-					const itemMap: Map<protocol.ContextItemKey, protocol.ContextItem> = contextRequestState?.itemMap ?? new Map();
-					for (const runnableResult of body.runnableResults) {
-						// Don't go through the context item result builder since we already updated
-						// everything through the cache update call.
-						for (const item of contextItemResult.convert(runnableResult, itemMap)) {
+				const contextItemResult = new ContextItemResultBuilder();
+				const { resolved, cached, referenced } = this.runnableResultManager.update(document, documentVersion, position, context, body, contextRequestState);
+				contextItemResult.cachedItems += cached;
+				contextItemResult.referencedItems += referenced;
+				if (resolved.length > 0) {
+					// Update the stats for telemetry.
+					for (const runnableResult of resolved) {
+						for (const item of contextItemResult.convert(runnableResult)) {
 							forDebugging?.push(item);
 						}
 					}
 				}
 				contextItemResult.updateResponse(body, token);
-				this.telemetrySender.sendRequestTelemetry(document, position, context, contextItemResult, timeTaken, { before: cacheState, after: this.runnableResultCache.getCacheState() });
+				this.telemetrySender.sendRequestTelemetry(document, position, context, contextItemResult, timeTaken, { before: cacheState, after: this.runnableResultManager.getCacheState() });
 				isDebugging && forDebugging?.length;
 				return;
 			} else if (protocol.ComputeContextResponse.isError(response)) {
@@ -1567,27 +1534,27 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 		const forDebugging: ContextItem[] | undefined = isDebugging ? [] : undefined;
 		const startTime = Date.now();
 		const isSpeculativeRequest = context.proposedEdits !== undefined;
-		const contextItemResult = new ContextItemResultBuilder(this.runnableResultCache, this.logService);
+		const contextItemResult = new ContextItemResultBuilder();
 		const neighborFiles: string[] = this.neighborFileModel.getNeighborFiles(document);
 		const timeBudget = context.timeBudget ?? 150;
-		const contextRequestState = this.runnableResultCache.getContextRequestState(document, position);
+		const contextRequestState = this.runnableResultManager.getContextRequestState(document, position);
 		const itemMap: Map<protocol.ContextItemKey, protocol.ContextItem> = contextRequestState?.itemMap ?? new Map();
 
 		this.onTimeOut = { requestId: context.requestId, results: contextRequestState?.clientOnTimeout, contextItemResult: contextItemResult, itemMap };
 		if (contextRequestState !== undefined) {
 			for (const runnableResult of contextRequestState.client) {
-				for (const item of contextItemResult.update(runnableResult, itemMap, true)) {
+				for (const item of contextItemResult.update(runnableResult, true)) {
 					forDebugging?.push(item);
 					yield item;
 				}
 			}
 			// No server items to refresh or recompute. So we are done.
 			if (contextRequestState.server.length === 0) {
-				const cacheState = this.runnableResultCache.getCacheState();
+				const cacheState = this.runnableResultManager.getCacheState();
 				if (isSpeculativeRequest) {
-					this.telemetrySender.sendSpeculativeRequestTelemetry(context, this.runnableResultCache.getRequestId() ?? 'unknown', contextItemResult.stats.yielded);
+					this.telemetrySender.sendSpeculativeRequestTelemetry(context, this.runnableResultManager.getRequestId() ?? 'unknown', contextItemResult.stats.yielded);
 				} else {
-					contextItemResult.path = this.runnableResultCache.getNodePath();
+					contextItemResult.path = this.runnableResultManager.getNodePath();
 					contextItemResult.serverTime = 0;
 					contextItemResult.contextComputeTime = 0;
 					this.telemetrySender.sendRequestTelemetry(
@@ -1605,7 +1572,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 			if (this.inflightCancellationToken !== undefined) {
 				this.inflightCancellationToken.flushOutstandingCancellation();
 			}
-			const cacheState = this.runnableResultCache.getCacheState();
+			const cacheState = this.runnableResultManager.getCacheState();
 			const delayedCancellationToken = new DelayedCancellationToken(token, startTime, timeBudget, cacheState, this.cachePopulationTimeout);
 			const documentVersion = document.version;
 			this.inflightCancellationToken = delayedCancellationToken;
@@ -1625,21 +1592,19 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 				return;
 			} else if (protocol.ComputeContextResponse.isOk(response)) {
 				const body: protocol.ComputeContextResponse.OK = response.body;
-				if (documentVersion === document.version) {
-					const { cached, referenced } = this.runnableResultCache.update(document, position, context, body, contextRequestState);
-					contextItemResult.cachedItems += cached;
-					contextItemResult.referencedItems += referenced;
-				}
-				if (body.runnableResults !== undefined) {
-					for (const runnableResult of body.runnableResults) {
-						for (const item of contextItemResult.update(runnableResult, itemMap)) {
+				const { resolved, cached, referenced } = this.runnableResultManager.update(document, documentVersion, position, context, body, contextRequestState);
+				contextItemResult.cachedItems += cached;
+				contextItemResult.referencedItems += referenced;
+				if (resolved.length > 0) {
+					for (const runnableResult of resolved) {
+						for (const item of contextItemResult.update(runnableResult)) {
 							forDebugging?.push(item);
 							yield item;
 						}
 					}
 				}
 				contextItemResult.updateResponse(body, token);
-				this.telemetrySender.sendRequestTelemetry(document, position, context, contextItemResult, timeTaken, { before: cacheState, after: this.runnableResultCache.getCacheState() });
+				this.telemetrySender.sendRequestTelemetry(document, position, context, contextItemResult, timeTaken, { before: cacheState, after: this.runnableResultManager.getCacheState() });
 				isDebugging && forDebugging?.length;
 				return;
 			} else if (protocol.ComputeContextResponse.isError(response)) {
@@ -1660,18 +1625,17 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 			return;
 		}
 		const contextItemSummary = this.onTimeOut.contextItemResult;
-		const itemMap = this.onTimeOut.itemMap;
 		if (this.onTimeOut.results === undefined) {
-			this.telemetrySender.sendRequestOnTimeoutTelemetry(context, contextItemSummary, this.runnableResultCache.getCacheState());
+			this.telemetrySender.sendRequestOnTimeoutTelemetry(context, contextItemSummary, this.runnableResultManager.getCacheState());
 			return;
 		}
 		const result: ContextItem[] = [];
 		for (const runnableResult of this.onTimeOut.results) {
-			for (const item of contextItemSummary.update(runnableResult, itemMap)) {
+			for (const item of contextItemSummary.update(runnableResult)) {
 				result.push(item);
 			}
 		}
-		this.telemetrySender.sendRequestOnTimeoutTelemetry(context, contextItemSummary, this.runnableResultCache.getCacheState());
+		this.telemetrySender.sendRequestOnTimeoutTelemetry(context, contextItemSummary, this.runnableResultManager.getCacheState());
 		return result;
 	}
 

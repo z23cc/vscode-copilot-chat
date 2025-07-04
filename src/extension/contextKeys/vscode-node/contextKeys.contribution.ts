@@ -30,6 +30,7 @@ const welcomeViewContextKeys = {
 const chatQuotaExceededContextKey = 'github.copilot.chat.quotaExceeded';
 
 const showLogViewContextKey = `github.copilot.chat.showLogView`;
+const showContextInspectorViewContextKey = `github.copilot.chat.showContextInspectorView`;
 const debugReportFeedbackContextKey = 'github.copilot.debugReportFeedback';
 
 const previewFeaturesDisabledContextKey = 'github.copilot.previewFeaturesDisabled';
@@ -59,6 +60,10 @@ export class ContextKeysContribution extends Disposable {
 			this._showLogView = true;
 			await commands.executeCommand('setContext', showLogViewContextKey, true);
 			await commands.executeCommand('copilot-chat.focus');
+		}));
+		this._register(commands.registerCommand('github.copilot.debug.showContextInspectorView', async () => {
+			await commands.executeCommand('setContext', showContextInspectorViewContextKey, true);
+			await commands.executeCommand('context-inspector.focus');
 		}));
 		this._register({ dispose: () => this._cancelPendingOfflineCheck() });
 		this._register(window.onDidChangeWindowState(() => this._runOfflineCheck('Window state change')));

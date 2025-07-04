@@ -1956,6 +1956,12 @@
 				"category": "Developer"
 			},
 			{
+				"command": "github.copilot.debug.showContextInspectorView",
+				"title": "%github.copilot.command.showContextInspectorView%",
+				"icon": "$(inspect)",
+				"category": "Developer"
+			},
+			{
 				"command": "github.copilot.terminal.explainTerminalSelection",
 				"title": "%github.copilot.command.explainTerminalSelection%",
 				"category": "GitHub Copilot"
@@ -3422,6 +3428,14 @@
 					"icon": "assets/debug-icon.svg",
 					"when": "github.copilot.chat.showLogView"
 				}
+			],
+			"context-inspector": [
+				{
+					"id": "context-inspector",
+					"name": "Language Context Inspector",
+					"icon": "$(inspect)",
+					"when": "github.copilot.chat.showContextInspectorView"
+				}
 			]
 		},
 		"viewsContainers": {
@@ -3430,6 +3444,11 @@
 					"id": "copilot-chat",
 					"title": "Copilot Chat Debug",
 					"icon": "assets/debug-icon.svg"
+				},
+				{
+					"id": "context-inspector",
+					"title": "Language Context Inspector",
+					"icon": "$(inspect)"
 				}
 			]
 		},

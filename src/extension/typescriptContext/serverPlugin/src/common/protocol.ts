@@ -126,7 +126,7 @@ export type RelatedFile = {
 	kind: ContextKind.RelatedFile;
 	key?: string;
 	priority: number;
-	uri: FilePath;
+	fileName: FilePath;
 	range?: Range;
 };
 

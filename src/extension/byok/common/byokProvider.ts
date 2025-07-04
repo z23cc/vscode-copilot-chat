@@ -87,7 +87,7 @@ export function chatModelInfoToProviderMetadata(chatModelInfo: IChatModelInforma
 		version: '1.0.0',
 		maxOutputTokens: outputTokens,
 		maxInputTokens: inputTokens,
-		name: chatModelInfo.name,
+		name: `$${chatModelInfo.name} (${chatModelInfo.capabilities.family})`,
 		isUserSelectable: true,
 		capabilities: {
 			agentMode: chatModelInfo.capabilities.supports.tool_calls,

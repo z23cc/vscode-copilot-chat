@@ -113,8 +113,8 @@ class TreeSnippet extends TreeContextItem {
 		const properties: TreePropertyItem[] = [];
 		properties.push(new TreePropertyItem(this, 'key', this.from.key ?? 'undefined'));
 		properties.push(new TreePropertyItem(this, 'value', this.from.value));
-		properties.push(new TreePropertyItem(this, 'path', this.from.fileName));
 		properties.push(new TreePropertyItem(this, 'priority', this.from.priority.toString()));
+		properties.push(new TreePropertyItem(this, 'path', this.from.fileName));
 		return properties;
 	}
 
@@ -265,9 +265,9 @@ class TreeYieldedSnippet {
 	public children(): TreePropertyItem[] {
 		return [
 			new TreePropertyItem(this, 'kind', this.from.kind),
+			new TreePropertyItem(this, 'value', this.from.value),
 			new TreePropertyItem(this, 'priority', this.from.priority.toString()),
-			new TreePropertyItem(this, 'uri', this.from.uri.toString()),
-			new TreePropertyItem(this, 'value', this.from.value)
+			new TreePropertyItem(this, 'uri', this.from.uri.toString())
 		];
 	}
 
@@ -305,9 +305,9 @@ class TreeYieldedTrait {
 	public children(): TreePropertyItem[] {
 		return [
 			new TreePropertyItem(this, 'kind', this.from.kind),
-			new TreePropertyItem(this, 'priority', this.from.priority.toString()),
 			new TreePropertyItem(this, 'name', this.from.name),
-			new TreePropertyItem(this, 'value', this.from.value)
+			new TreePropertyItem(this, 'value', this.from.value),
+			new TreePropertyItem(this, 'priority', this.from.priority.toString())
 		];
 	}
 

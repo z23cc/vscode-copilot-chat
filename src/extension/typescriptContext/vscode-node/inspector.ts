@@ -113,6 +113,7 @@ class TreeSnippet extends TreeContextItem {
 		const properties: TreePropertyItem[] = [];
 		properties.push(new TreePropertyItem(this, 'key', this.from.key ?? 'undefined'));
 		properties.push(new TreePropertyItem(this, 'value', this.from.value));
+		properties.push(new TreePropertyItem(this, 'path', this.from.fileName));
 		properties.push(new TreePropertyItem(this, 'priority', this.from.priority.toString()));
 		return properties;
 	}

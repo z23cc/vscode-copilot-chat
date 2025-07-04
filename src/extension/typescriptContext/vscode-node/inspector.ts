@@ -146,6 +146,10 @@ class TreeCacheInfo {
 		const scope = this.from.scope;
 		if (scope.kind === protocol.CacheScopeKind.WithinRange) {
 			properties.push(new TreePropertyItem(this, 'range', this.getRangeString(scope.range)));
+		} else if (scope.kind === protocol.CacheScopeKind.OutsideRange) {
+			for (let i = 0; i < scope.ranges.length; i++) {
+				properties.push(new TreePropertyItem(this, `${i}`, this.getRangeString(scope.ranges[i])));
+			}
 		}
 		return properties;
 	}
@@ -172,7 +176,7 @@ class TreeCacheInfo {
 			case protocol.CacheScopeKind.NeighborFiles:
 				return 'neighbor files';
 			case protocol.CacheScopeKind.OutsideRange:
-				return 'outside range';
+				return 'outside ranges';
 			case protocol.CacheScopeKind.WithinRange:
 				return 'within range';
 			default:

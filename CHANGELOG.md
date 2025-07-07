@@ -598,7 +598,7 @@ Last month, we introduced support for next edit suggestions to automatically sug
 
 #### NES acceptance flow
 
-Accepting next edit suggestions is now more seamless. Once you accept a suggestion, you can continue accepting subsequent suggestions with a single `kbstyle(Tab)` press, as long as you haven't started typing again. If you start typing, you'll need to press `kbstyle(Tab)` to first move the cursor to the next suggestion before you can accept it.
+Accepting next edit suggestions is now more seamless. Once you accept a suggestion, you can continue accepting subsequent suggestions with a single <kbd>Tab</kbd> press, as long as you haven't started typing again. If you start typing, you'll need to press <kbd>Tab</kbd> to first move the cursor to the next suggestion before you can accept it.
 
 ### Notebooks
 

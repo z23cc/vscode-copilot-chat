@@ -82,11 +82,11 @@ New in this release, the large language model can load instructions on demand. E
 
 You can now click on previous requests to modify the text content, attached context, mode, and model. Upon submitting this change, this will remove all subsequent requests, undo any edits made, and send the new request in chat.
 
-There will be a controlled rollout of different entry points to editing requests, which will help us gather feedback on preferential edit and undo flows. However, users can set their preferred mode with the experimental `setting(chat.editRequests)` setting:
+There will be a controlled rollout of different entry points to editing requests, which will help us gather feedback on preferential edit and undo flows. However, users can set their preferred mode with the experimental `chat.editRequests` setting:
 
-* `setting(chat.editRequests.inline)`: Hover a request and select the text to begin an edit inline with the request.
-* `setting(chat.editRequests.hover)`: Hover a request to reveal a toolbar with a button to begin an edit inline with the request.
-* `setting(chat.editRequests.input)`: Hover a request to reveal a toolbar, which will start edits in the input box at the bottom of chat.
+* `chat.editRequests.inline`: Hover a request and select the text to begin an edit inline with the request.
+* `chat.editRequests.hover`: Hover a request to reveal a toolbar with a button to begin an edit inline with the request.
+* `chat.editRequests.input`: Hover a request to reveal a toolbar, which will start edits in the input box at the bottom of chat.
 
 <video src="images/1_102/edit-previous-requests.mp4" title="Video showing the process of editing a previous request in the Chat view." autoplay loop controls muted></video>
 
@@ -153,7 +153,7 @@ We now show a badge over the application icon in the dock when the window is not
 
 ![Screenshot of the VS Code dock icon showing an agent confirmation as a badge.](./images/1_102/badge.png)
 
-You can enable or disable this badge via the `setting(chat.notifyWindowOnConfirmation)` setting.
+You can enable or disable this badge via the `chat.notifyWindowOnConfirmation` setting.
 
 #### Start chat from the command line
 
@@ -308,7 +308,7 @@ You can also assign a custom keybinding to quickly snooze suggestions for a spec
 
 #### Settings search suggestions (Preview)
 
-**Setting**: `setting(workbench.settings.showAISearchToggle:true)`
+**Setting**: `workbench.settings.showAISearchToggle`
 
 This milestone, we modified the sparkle toggle in the Settings editor, so that it acts as a toggle between the AI and non-AI search results. The AI settings search results are semantically similar results instead of results that are based on string matching. For example, `editor.fontSize` appears as an AI settings search result when you search for "increase text size".
 

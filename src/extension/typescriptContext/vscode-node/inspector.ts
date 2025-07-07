@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 
 import type { ContextItem, SnippetContext, TraitContext } from '../../../platform/languageServer/common/languageContextService';
 import * as protocol from '../common/serverProtocol';
-import { ContextItemResultBuilder, type CachePopulatedEvent, type IInternalLanguageContextService, type ResolvedRunnableResult } from './types';
+import { ContextItemResultBuilder, type ContextComputedEvent, type ContextItemSummary, type IInternalLanguageContextService, type ResolvedRunnableResult } from './types';
 
 class TreePropertyItem {
 
@@ -146,7 +146,7 @@ class TreeCacheInfo {
 		const properties: TreePropertyItem[] = [];
 		const scope = this.from.scope;
 		if (scope.kind === protocol.CacheScopeKind.WithinRange) {
-			properties.push(new TreePropertyItem(this, 'range', this.getRangeString(scope.range)));
+			properties.push(new TreePropertyItem(this, '0', this.getRangeString(scope.range)));
 		} else if (scope.kind === protocol.CacheScopeKind.OutsideRange) {
 			for (let i = 0; i < scope.ranges.length; i++) {
 				properties.push(new TreePropertyItem(this, `${i}`, this.getRangeString(scope.ranges[i])));
@@ -192,10 +192,12 @@ class TreeCacheInfo {
 
 class TreeRunnableResult {
 
-	private from: ResolvedRunnableResult;
-	private items: (TreeTrait | TreeSnippet)[];
+	private readonly parent: TreeContextRequest;
+	private readonly from: ResolvedRunnableResult;
+	private readonly items: (TreeTrait | TreeSnippet)[];
 
-	constructor(from: ResolvedRunnableResult) {
+	constructor(parent: TreeContextRequest, from: ResolvedRunnableResult) {
+		this.parent = parent;
 		this.from = from;
 		this.items = from.items.map(item => {
 			if (item.kind === protocol.ContextKind.Trait) {
@@ -209,7 +211,7 @@ class TreeRunnableResult {
 	}
 
 	public get id(): string {
-		return this.from.id;
+		return `${this.parent.id}.${this.from.id}`;
 	}
 
 	public children(): (TreeTrait | TreeSnippet | TreeCacheInfo)[] {
@@ -226,8 +228,12 @@ class TreeRunnableResult {
 			id = id.substring(1); // Remove leading underscore for display purposes
 		}
 		const cacheInfo = this.from.cache !== undefined ? 1 : 0;
-		const item = new vscode.TreeItem(`${id} - ${this.items.length} items`, this.items.length + cacheInfo > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-		item.id = this.from.id;
+		let label = `${id} - ${this.items.length} items`;
+		if (this.parent.summary.serverComputed?.has(this.from.id)) {
+			label += ' - ⏳';
+		}
+		const item = new vscode.TreeItem(label, this.items.length + cacheInfo > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+		item.id = this.id;
 		item.tooltip = this.createTooltip();
 		return item;
 
@@ -328,12 +334,14 @@ type TreeYieldedContextItem = TreeYieldedSnippet | TreeYieldedTrait;
 
 class TreeYielded {
 
+	private readonly parent: TreeContextRequest;
 	private readonly items: ContextItem[];
 	private readonly contextItemSummary: ContextItemResultBuilder;
 
-	constructor(runnables: ResolvedRunnableResult[]) {
+	constructor(parent: TreeContextRequest, runnables: ReadonlyArray<ResolvedRunnableResult>) {
+		this.parent = parent;
 		const items: ContextItem[] = [];
-		this.contextItemSummary = new ContextItemResultBuilder();
+		this.contextItemSummary = new ContextItemResultBuilder(0);
 		for (const runnable of runnables) {
 			for (const converted of this.contextItemSummary.update(runnable)) {
 				items.push(converted);
@@ -357,11 +365,80 @@ class TreeYielded {
 	public toTreeItem(): vscode.TreeItem {
 		const label = `Yielded: ${this.items.length} from ${this.contextItemSummary.stats.total} items`;
 		const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
+		item.id = this.id;
 		return item;
+	}
+
+	public get id(): string {
+		return `${this.parent.id}.yielded`;
 	}
 }
 
-type InspectorItems = TreeRunnableResult | TreeTrait | TreeSnippet | TreePropertyItem | TreeYielded | TreeYieldedSnippet | TreeYieldedTrait | TreeCacheInfo;
+class TreeContextRequest {
+
+	private readonly label: string;
+
+	private readonly document: string;
+	private readonly position: vscode.Position;
+	private readonly items: ReadonlyArray<ResolvedRunnableResult>;
+	public readonly summary: ContextItemSummary;
+
+	private static counter = 1;
+
+	constructor(label: string, event: ContextComputedEvent) {
+		this.document = event.document.uri.toString();
+		this.position = event.position;
+		this.items = event.results;
+		this.summary = event.summary;
+		const now = new Date();
+		const timeString = `${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+		this.label = `${label} - ${timeString} - [${this.position.line + 1}:${this.position.character + 1}]`;
+		if (this.summary.serverComputed && this.summary.serverComputed.size > 0) {
+			this.label += ` - ⏳`;
+		}
+	}
+
+	public toTreeItem(): vscode.TreeItem {
+		const item = new vscode.TreeItem(this.label, vscode.TreeItemCollapsibleState.Collapsed);
+		item.tooltip = this.createTooltip();
+		return item;
+	}
+
+	private createTooltip(): vscode.MarkdownString {
+		const markdown = new vscode.MarkdownString(`**${this.label}**\n\n`);
+		const json = {
+			document: this.document,
+			position: {
+				line: this.position.line + 1,
+				character: this.position.character + 1
+			},
+			runnables: this.items.length,
+			cached: `${this.summary.cachedItems}/${this.summary.stats.total} cached`,
+			timings: {
+				totalTime: this.summary.totalTime,
+				serverTime: this.summary.serverTime,
+				contextComputeTime: this.summary.contextComputeTime,
+			},
+		};
+		markdown.appendCodeblock(JSON.stringify(json, undefined, 2), 'json');
+		return markdown;
+	}
+
+	public children(): (TreeRunnableResult | TreeYielded)[] {
+		const result: (TreeRunnableResult | TreeYielded)[] = [];
+		for (const item of this.items) {
+			result.push(new TreeRunnableResult(this, item));
+		}
+		result.push(new TreeYielded(this, this.items));
+		return result;
+	}
+
+	public get id(): string {
+		return `${TreeContextRequest.counter++}`;
+	}
+}
+
+type InspectorItems = TreeContextRequest | TreeRunnableResult | TreeTrait | TreeSnippet | TreePropertyItem | TreeYielded | TreeYieldedSnippet | TreeYieldedTrait | TreeCacheInfo;
 export class InspectorDataProvider implements vscode.TreeDataProvider<InspectorItems> {
 
 	private readonly languageContextService: IInternalLanguageContextService;
@@ -369,45 +446,47 @@ export class InspectorDataProvider implements vscode.TreeDataProvider<InspectorI
 	private readonly _onDidChangeTreeData: vscode.EventEmitter<InspectorItems | InspectorItems[] | undefined | null | void>;
 	public readonly onDidChangeTreeData: vscode.Event<InspectorItems | InspectorItems[] | undefined | null | void>;
 
-	private current: CachePopulatedEvent | undefined;
+	private items: TreeContextRequest[];
 
 	constructor(languageContextService: IInternalLanguageContextService) {
 		this.languageContextService = languageContextService;
 		this._onDidChangeTreeData = new vscode.EventEmitter<InspectorItems | InspectorItems[] | undefined | null | void>();
 		this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-		this.languageContextService.onCachePopulated((data) => {
-			// This event is fired when the cache is populated with context items.
-			// We can use this to refresh the tree view.
-			this.current = data;
-			this._onDidChangeTreeData.fire(undefined);
+		this.items = [];
+		this.languageContextService.onCachePopulated((event) => {
+			this.addContextRequest(new TreeContextRequest(`Cache Population Request`, event));
 		});
-		this.current = undefined;
+		this.languageContextService.onContextComputed((event) => {
+			this.addContextRequest(new TreeContextRequest(`Context Compute Request`, event));
+		});
+		this.languageContextService.onContextComputedOnTimeout((event) => {
+			this.addContextRequest(new TreeContextRequest(`Context On Timeout Request`, event));
+		});
 	}
 
-	getTreeItem(element: InspectorItems): vscode.TreeItem | Thenable<vscode.TreeItem> {
+	private addContextRequest(item: TreeContextRequest): void {
+		if (this.items.length >= 32) {
+			// Limit the number of items to avoid performance issues.
+			this.items.pop();
+		}
+		this.items.unshift(item);
+		this._onDidChangeTreeData.fire(undefined);
+	}
+
+	public getTreeItem(element: InspectorItems): vscode.TreeItem | Thenable<vscode.TreeItem> {
 		return element.toTreeItem();
 	}
 
-	async getChildren(element?: InspectorItems | undefined): Promise<InspectorItems[]> {
-		if (this.current === undefined) {
+	public getChildren(element?: InspectorItems | undefined): InspectorItems[] {
+		if (this.items.length === 0) {
 			return [];
 		}
 
 		if (element === undefined) {
-			try {
-				const result: InspectorItems[] = [];
-				for (const item of this.current.results) {
-					const runnableResult = new TreeRunnableResult(item);
-					result.push(runnableResult);
-				}
-				result.push(new TreeYielded(this.current.results));
-				return result;
-			} catch (error) {
-				return [];
-			}
+			return this.items;
 		} else if (
 			element instanceof TreeRunnableResult || element instanceof TreeTrait || element instanceof TreeSnippet || element instanceof TreeYielded ||
-			element instanceof TreeYieldedSnippet || element instanceof TreeYieldedTrait || element instanceof TreeCacheInfo) {
+			element instanceof TreeYieldedSnippet || element instanceof TreeYieldedTrait || element instanceof TreeCacheInfo || element instanceof TreeContextRequest) {
 
 			return element.children();
 		}

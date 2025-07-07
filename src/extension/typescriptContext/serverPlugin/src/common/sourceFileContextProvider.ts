@@ -178,6 +178,8 @@ export class SourceFileContextProvider extends ContextProvider {
 			result.addPrimary(runnable);
 		}
 		result.addSecondary(new TypeOfImportsRunnable(session, languageService, context, this.tokenInfo, new Set(), undefined));
-		result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo));
+		if (context.neighborFiles.length > 0) {
+			result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo));
+		}
 	}
 }

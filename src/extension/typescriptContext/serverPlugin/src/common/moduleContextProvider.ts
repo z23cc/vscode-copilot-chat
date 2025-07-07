@@ -38,6 +38,8 @@ export class ModuleContextProvider extends ContextProvider {
 			result.addPrimary(runnable);
 		}
 		result.addSecondary(new TypeOfImportsRunnable(session, languageService, context, this.tokenInfo, excludes, undefined));
-		result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo, undefined));
+		if (context.neighborFiles.length > 0) {
+			result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo, undefined));
+		}
 	}
 }

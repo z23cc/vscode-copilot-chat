@@ -493,7 +493,9 @@ export abstract class FunctionLikeContextProvider extends ContextProvider {
 			result.addPrimary(runnable);
 		}
 		result.addSecondary(new TypeOfImportsRunnable(session, languageService, context, this.tokenInfo, excludes, this.cacheScope));
-		result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo));
+		if (context.neighborFiles.length > 0) {
+			result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo));
+		}
 	}
 
 	protected abstract getTypeExcludes(languageService: tt.LanguageService, context: RequestContext): Set<tt.Symbol>;

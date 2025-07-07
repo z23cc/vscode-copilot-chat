@@ -25,14 +25,21 @@ export namespace ResolvedRunnableResult {
 	}
 }
 
-export type CachePopulatedEvent = {
+export type ContextComputedEvent = {
 	document: vscode.TextDocument;
 	position: vscode.Position;
-	results: ResolvedRunnableResult[];
+	results: ReadonlyArray<ResolvedRunnableResult>;
+	summary: ContextItemSummary;
 }
 
+export type OnCachePopulatedEvent = ContextComputedEvent;
+export type OnContextComputedEvent = ContextComputedEvent;
+export type OnContextComputedOnTimeoutEvent = ContextComputedEvent;
+
 export interface IInternalLanguageContextService extends ILanguageContextService {
-	onCachePopulated: vscode.Event<CachePopulatedEvent>;
+	onCachePopulated: vscode.Event<OnCachePopulatedEvent>;
+	onContextComputed: vscode.Event<OnContextComputedEvent>;
+	onContextComputedOnTimeout: vscode.Event<OnContextComputedOnTimeoutEvent>;
 }
 
 export type Stats = {
@@ -88,9 +95,11 @@ export interface ContextItemSummary {
 	tokenBudgetExhausted: boolean;
 	cachedItems: number;
 	referencedItems: number;
+	fromCache: boolean;
+	serverComputed: Set<string> | undefined;
 	serverTime: number;
 	contextComputeTime: number;
-	fromCache: boolean;
+	totalTime: number;
 }
 export namespace ContextItemSummary {
 	export const DefaultExhausted: ContextItemSummary = Object.freeze<ContextItemSummary>({
@@ -102,9 +111,11 @@ export namespace ContextItemSummary {
 		tokenBudgetExhausted: true,
 		cachedItems: 0,
 		referencedItems: 0,
+		fromCache: false,
+		serverComputed: undefined,
 		serverTime: -1,
 		contextComputeTime: -1,
-		fromCache: false
+		totalTime: 0,
 	});
 }
 
@@ -121,11 +132,13 @@ export class ContextItemResultBuilder implements ContextItemSummary {
 	public tokenBudgetExhausted: boolean;
 	public cachedItems: number;
 	public referencedItems: number;
+	public serverComputed: Set<string> | undefined;
+	public fromCache: boolean;
 	public serverTime: number;
 	public contextComputeTime: number;
-	public fromCache: boolean;
+	public totalTime: number;
 
-	constructor() {
+	constructor(totalTime: number) {
 		this.seenRunnableResults = new Set();
 		this.seenContextItems = new Set();
 
@@ -137,9 +150,11 @@ export class ContextItemResultBuilder implements ContextItemSummary {
 		this.tokenBudgetExhausted = false;
 		this.cachedItems = 0;
 		this.referencedItems = 0;
+		this.fromCache = false;
+		this.serverComputed = undefined;
 		this.serverTime = -1;
 		this.contextComputeTime = -1;
-		this.fromCache = false;
+		this.totalTime = totalTime;
 	}
 
 	public updateResponse(result: protocol.ContextRequestResult, token: vscode.CancellationToken): void {

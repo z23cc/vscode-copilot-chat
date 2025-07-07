@@ -394,7 +394,7 @@ class TreeContextRequest {
 		const timeString = `${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
 		this.label = `${label} - ${timeString} - [${this.position.line + 1}:${this.position.character + 1}]`;
 		if (this.summary.serverComputed && this.summary.serverComputed.size > 0) {
-			this.label += ` - ⏳`;
+			this.label += ` - ⏳ ${this.summary.totalTime}ms`;
 		}
 	}
 

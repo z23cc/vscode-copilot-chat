@@ -847,6 +847,18 @@ export abstract class AbstractContextRunnable implements ContextRunnable {
 		this.result = this.createRunnableResult(result);
 	}
 
+	public useCachedResult(cached: CachedContextRunnableResult): boolean {
+		const cacheInfo = cached.cache;
+		if (cacheInfo === undefined) {
+			return false;
+		}
+		if (cacheInfo.emitMode === EmitMode.ClientBased && cached.state === ContextRunnableState.Finished) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+
 	public compute(token: tt.CancellationToken): void {
 		if (this.result === undefined) {
 			throw new Error('Runnable not initialized');
@@ -986,16 +998,16 @@ export class ContextRunnableCollector {
 		this.tertiary = [];
 	}
 
-	public addPrimary(runnable: ContextRunnable): void {
-		this.primary.push(this.checkRunnable(runnable));
+	public addPrimary(runnable: AbstractContextRunnable): void {
+		this.primary.push(this.useCachedRunnableIfPossible(runnable));
 	}
 
-	public addSecondary(runnable: ContextRunnable): void {
-		this.secondary.push(this.checkRunnable(runnable));
+	public addSecondary(runnable: AbstractContextRunnable): void {
+		this.secondary.push(this.useCachedRunnableIfPossible(runnable));
 	}
 
-	public addTertiary(runnable: ContextRunnable): void {
-		this.tertiary.push(this.checkRunnable(runnable));
+	public addTertiary(runnable: AbstractContextRunnable): void {
+		this.tertiary.push(this.useCachedRunnableIfPossible(runnable));
 	}
 
 	public *entries(): IterableIterator<ContextRunnable> {
@@ -1040,16 +1052,12 @@ export class ContextRunnableCollector {
 		});
 	}
 
-	private checkRunnable(runnable: ContextRunnable): ContextRunnable {
+	private useCachedRunnableIfPossible(runnable: AbstractContextRunnable): ContextRunnable {
 		const cached = this.cachedRunnableResults.get(runnable.id);
 		if (cached === undefined) {
 			return runnable;
 		}
-		if (cached.emitMode === EmitMode.ClientBased && cached.state === ContextRunnableState.Finished) {
-			return new CacheBasedContextRunnable(cached, runnable.priority, runnable.cost);
-		} else {
-			return runnable;
-		}
+		return runnable.useCachedResult(cached) ? new CacheBasedContextRunnable(cached, runnable.priority, runnable.cost) : runnable;
 	}
 }
 

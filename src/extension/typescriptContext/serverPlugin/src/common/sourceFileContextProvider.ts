@@ -6,7 +6,7 @@ import type tt from 'typescript/lib/tsserverlibrary';
 import TS from './typescript';
 const ts = TS();
 
-import { TypeOfExpressionRunnable, TypeOfImportsRunnable, TypeOfLocalsRunnable, TypesOfNeighborFilesRunnable } from './baseContextProviders';
+import { ImportsRunnable, TypeOfExpressionRunnable, TypeOfLocalsRunnable, TypesOfNeighborFilesRunnable } from './baseContextProviders';
 import { CodeSnippetBuilder } from './code';
 import { AbstractContextRunnable, ComputeCost, ContextProvider, ContextResult, type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext, type RunnableResult } from './contextProvider';
 import { EmitMode, Priorities, SpeculativeKind, type CacheInfo, type CacheScope } from './protocol';
@@ -21,14 +21,14 @@ export type SymbolsInScope = {
 	modules: { alias: tt.Symbol; real: tt.Symbol }[];
 };
 
-export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
+export class GlobalsRunnable extends AbstractContextRunnable {
 
 	private readonly tokenInfo: TokenInfo;
 	private readonly symbolsToQuery: tt.SymbolFlags;
 	private readonly cacheScope: CacheScope | undefined;
 
 	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, tokenInfo: TokenInfo, symbolsToQuery: tt.SymbolFlags, cacheScope?: CacheScope) {
-		super(session, languageService, context, GlobalSymbolsInScopeRunnable.name, Priorities.ImportedFunctions, ComputeCost.Medium);
+		super(session, languageService, context, GlobalsRunnable.name, Priorities.Globals, ComputeCost.Medium);
 		this.tokenInfo = tokenInfo;
 		this.symbolsToQuery = symbolsToQuery;
 		this.cacheScope = cacheScope;
@@ -109,7 +109,7 @@ export class GlobalSymbolsInScopeRunnable extends AbstractContextRunnable {
 		};
 
 		const location = this.tokenInfo.previous ?? this.tokenInfo.token;
-		const symbols = typeChecker.getSymbolsInScope(location, this.symbolsToQuery | ts.SymbolFlags.Alias);
+		const symbols = typeChecker.getSymbolsInScope(location, this.symbolsToQuery);
 		for (const symbol of symbols) {
 			const declarations = symbol.declarations;
 			if (declarations === undefined) {
@@ -167,7 +167,7 @@ export class SourceFileContextProvider extends ContextProvider {
 		const symbolsToQuery = this.computeInfo.getSymbolsToQuery();
 		const cacheScope = this.computeInfo.getCallableCacheScope();
 		if (symbolsToQuery !== undefined && symbolsToQuery !== ts.SymbolFlags.None) {
-			result.addSecondary(new GlobalSymbolsInScopeRunnable(session, languageService, context, this.tokenInfo, symbolsToQuery, cacheScope));
+			result.addSecondary(new GlobalsRunnable(session, languageService, context, this.tokenInfo, symbolsToQuery, cacheScope));
 		}
 		if (!this.computeInfo.isFirstCallableProvider(this)) {
 			return;
@@ -177,7 +177,7 @@ export class SourceFileContextProvider extends ContextProvider {
 		if (runnable !== undefined) {
 			result.addPrimary(runnable);
 		}
-		result.addSecondary(new TypeOfImportsRunnable(session, languageService, context, this.tokenInfo, new Set(), undefined));
+		result.addSecondary(new ImportsRunnable(session, languageService, context, this.tokenInfo, new Set(), undefined));
 		if (context.neighborFiles.length > 0) {
 			result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo));
 		}

@@ -34,7 +34,7 @@ namespace tss {
 	};
 
 	export function getRelevantTokens(sourceFile: tt.SourceFile, position: number): TokenInfo {
-		// We first get the token at the position. This will be the leave token even if
+		// We first get the token at the position. This will be the leaf token even if
 		// position denotes a white space. In this case the next token after the while space
 		// will be considered.
 		const token = tss.getTokenAtPosition(sourceFile, position);
@@ -71,19 +71,19 @@ namespace tss {
 		if (needsPrevious) {
 			let current = token;
 			while (current.parent) {
-				const children = getChildren(current.parent, sourceFile);
+				const children = Nodes.getChildren(current.parent, sourceFile);
 				const currentIndex = findNodeIndex(children, current);
 				if (currentIndex > 0) {
 					// Found a previous sibling, now get its rightmost token
 					let previousNode = children[currentIndex - 1];
-					let previousChildren = getChildren(previousNode, sourceFile);
+					let previousChildren = Nodes.getChildren(previousNode, sourceFile);
 					while (previousChildren.length > 0) {
 						const lastChild = previousChildren[previousChildren.length - 1];
 						if (lastChild.kind === ts.SyntaxKind.EndOfFileToken) {
 							break;
 						}
 						previousNode = lastChild;
-						previousChildren = getChildren(previousNode, sourceFile);
+						previousChildren = Nodes.getChildren(previousNode, sourceFile);
 					}
 					if (previousNode.kind !== ts.SyntaxKind.EndOfFileToken) {
 						result.previous = previousNode;
@@ -95,21 +95,6 @@ namespace tss {
 		}
 
 		return result;
-	}
-
-	export function getChildren(node: tt.Node, sourceFile: tt.SourceFile): readonly tt.Node[] {
-		// If you ask a source file for its children you get an array
-		// with [SyntaxList, EndOfFileToken]
-		if (ts.isSourceFile(node)) {
-			const children = node.getChildren(sourceFile);
-			if (children.length > 0 && children[0].kind === ts.SyntaxKind.SyntaxList) {
-				return children[0].getChildren(sourceFile);
-			} else {
-				return node.statements;
-			}
-		} else {
-			return node.getChildren(sourceFile);
-		}
 	}
 
 	function findNodeIndex(nodes: readonly tt.Node[], target: tt.Node): number {
@@ -194,6 +179,22 @@ namespace tss {
 	}
 
 	export namespace Nodes {
+
+		export function getChildren(node: tt.Node, sourceFile: tt.SourceFile): readonly tt.Node[] {
+			// If you ask a source file for its children you get an array
+			// with [SyntaxList, EndOfFileToken]
+			if (ts.isSourceFile(node)) {
+				const children = node.getChildren(sourceFile);
+				if (children.length > 0 && children[0].kind === ts.SyntaxKind.SyntaxList) {
+					return children[0].getChildren(sourceFile);
+				} else {
+					return node.statements;
+				}
+			} else {
+				return node.getChildren(sourceFile);
+			}
+		}
+
 
 		export function getSymbol(node: tt.Node): tt.Symbol | undefined {
 			return (node as InternalNode).symbol;

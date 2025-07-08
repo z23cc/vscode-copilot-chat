@@ -108,10 +108,10 @@ export enum Priorities {
 	Inherited = 0.9,
 	Properties = 0.8,
 	Blueprints = 0.7,
-	ImportedFunctions = 0.6,
+	Imports = 0.6,
 	NeighborFiles = 0.55,
-	Traits = 0.5,
-	ImportedTypes = 0.4,
+	Globals = 0.5,
+	Traits = 0.4,
 }
 
 export enum SpeculativeKind {
@@ -316,9 +316,9 @@ export type CachedContextRunnableResult = {
 	items: CachedContextItem[];
 
 	/**
-	 * The emit mode of the runnable.
+	 * The cache information of the runnable.
 	 */
-	emitMode?: EmitMode;
+	cache?: CacheInfo;
 }
 
 export type ContextRunnableResultReference = {

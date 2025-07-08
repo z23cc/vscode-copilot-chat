@@ -14,7 +14,9 @@ import {
 	type ProviderComputeContext, type RequestContext, type RunnableResult, type SymbolEmitData
 } from './contextProvider';
 import {
-	CacheScopeKind, EmitMode, Priorities, SpeculativeKind, Trait, TraitKind, type CacheInfo, type CacheScope,
+	CacheScopeKind, ContextRunnableState, EmitMode, Priorities,
+	Range,
+	SpeculativeKind, Trait, TraitKind, type CachedContextRunnableResult, type CacheInfo, type CacheScope,
 	type ContextItemKey
 } from './protocol';
 import tss, { Symbols } from './typescripts';
@@ -292,89 +294,177 @@ export class TypesOfNeighborFilesRunnable extends AbstractContextRunnable {
 	}
 }
 
-export class TypeOfImportsRunnable extends AbstractContextRunnable {
+type ImportBlock = { before: tt.Node | undefined; imports: tt.ImportDeclaration[]; after: tt.Node | undefined };
+export class ImportsRunnable extends AbstractContextRunnable {
 
 	private readonly tokenInfo: tss.TokenInfo;
 	private readonly excludes: Set<tt.Symbol>;
-	private readonly defaultCacheScope: CacheScope | undefined;
+	private cacheInfo: CacheInfo | undefined;
 	private runnableResult: RunnableResult | undefined;
 
-	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, tokenInfo: tss.TokenInfo, excludes: Set<tt.Symbol>, cacheScope: CacheScope | undefined, priority: number = Priorities.ImportedTypes) {
-		super(session, languageService, context, TypeOfImportsRunnable.name, priority, ComputeCost.Medium);
+	private static readonly CacheNodes: Set<tt.SyntaxKind> = new Set([
+		ts.SyntaxKind.FunctionDeclaration,
+		ts.SyntaxKind.ArrowFunction,
+		ts.SyntaxKind.FunctionExpression,
+		ts.SyntaxKind.Constructor,
+		ts.SyntaxKind.MethodDeclaration,
+		ts.SyntaxKind.ClassDeclaration,
+		ts.SyntaxKind.ModuleDeclaration
+	]);
+
+	constructor(session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, tokenInfo: tss.TokenInfo, excludes: Set<tt.Symbol>, priority: number = Priorities.Imports) {
+		super(session, languageService, context, ImportsRunnable.name, priority, ComputeCost.Medium);
 		this.tokenInfo = tokenInfo;
 		this.excludes = excludes;
-		this.defaultCacheScope = cacheScope;
 		this.runnableResult = undefined;
+		const scopeNode = this.getCacheScopeNode();
+		this.cacheInfo = scopeNode === undefined
+			? undefined
+			: { emitMode: EmitMode.ClientBased, scope: this.createCacheScope(scopeNode) };
+	}
+
+	public override useCachedResult(cached: CachedContextRunnableResult): boolean {
+		const cacheInfo = cached.cache;
+		if (cacheInfo === undefined) {
+			return false;
+		}
+		if (cacheInfo.emitMode === EmitMode.ClientBased && cached.state === ContextRunnableState.Finished) {
+			const scope = cacheInfo.scope;
+			if (scope.kind === CacheScopeKind.WithinRange) {
+				return true;
+			} else if (scope.kind === CacheScopeKind.OutsideRange) {
+				// If we have a cache info that means we have an within range cache scope.
+				// So we can't use the cached result since we need to emit a new scope.
+				return this.cacheInfo === undefined;
+			}
+		}
+		return super.useCachedResult(cached);
 	}
 
 	protected override createRunnableResult(result: ContextResult): RunnableResult {
-		const cacheInfo: CacheInfo | undefined = this.defaultCacheScope !== undefined ? { emitMode: EmitMode.ClientBased, scope: this.defaultCacheScope } : undefined;
-		this.runnableResult = result.createRunnableResult(this.id, cacheInfo);
+		this.runnableResult = result.createRunnableResult(this.id, this.cacheInfo);
 		return this.runnableResult;
 	}
 
 	protected override run(result: RunnableResult, cancellationToken: tt.CancellationToken): void {
-		const token = this.tokenInfo.previous ?? this.tokenInfo.token ?? this.tokenInfo.touching;
-		const symbols = this.symbols;
-		const typeChecker = symbols.getTypeChecker();
-
-		// Find all symbols in scope the represent a type and the type comes from a source file
-		// that should be considered for context.
-		const typesInScope = typeChecker.getSymbolsInScope(token, ts.SymbolFlags.Class | ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias | ts.SymbolFlags.Enum | ts.SymbolFlags.Alias);
-		if (typesInScope.length === 0) {
-			return;
-		}
+		cancellationToken.throwIfCancellationRequested();
+		const token = this.tokenInfo.touching ?? this.tokenInfo.token;
 		const sourceFile = token.getSourceFile();
-		let importDeclarations: Set<tt.ImportDeclaration> | undefined = new Set();
-		for (const symbol of typesInScope) {
-			cancellationToken.throwIfCancellationRequested();
-			if (this.excludes.has(symbol)) {
-				continue;
-			}
-			const symbolSourceFile = Symbols.getPrimarySourceFile(symbol);
-			if (symbolSourceFile === undefined || this.skipSourceFile(symbolSourceFile)) {
-				continue;
-			}
-			let contextSymbol: tt.Symbol | undefined = symbol;
-			const name = symbol.name;
-			if (Symbols.isAlias(symbol)) {
-				const leaf = this.symbols.getLeafAliasedSymbol(symbol);
-				if (leaf !== undefined && (leaf.flags & (ts.SymbolFlags.Class | ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias | ts.SymbolFlags.Enum)) !== 0) {
-					contextSymbol = leaf;
-				} else {
-					contextSymbol = undefined;
-				}
-			}
-			if (contextSymbol === undefined || this.excludes.has(contextSymbol)) {
-				continue;
-			}
-			if (contextSymbol !== symbol) {
-				const symbolSourceFile = Symbols.getPrimarySourceFile(contextSymbol);
-				if (symbolSourceFile === undefined || this.skipSourceFile(symbolSourceFile) || symbolSourceFile === sourceFile) {
+		const importBlocks = this.getImportBlocks(sourceFile);
+		cancellationToken.throwIfCancellationRequested();
+		const importedSymbols: { symbol: tt.Symbol; name: string }[] = [];
+		let outSideRanges: Range[] | undefined = undefined;
+		for (const block of importBlocks) {
+			for (const stmt of block.imports) {
+				cancellationToken.throwIfCancellationRequested();
+				if (stmt.importClause === undefined) {
 					continue;
 				}
-			} else if (symbolSourceFile === sourceFile) {
+				const importClause = stmt.importClause;
+				if (importClause.name !== undefined) {
+					const symbol = this.symbols.getLeafSymbolAtLocation(importClause.name);
+					if (symbol !== undefined && !this.excludes.has(symbol)) {
+						importedSymbols.push({ symbol, name: importClause.name.getText() });
+					}
+				} else if (importClause.namedBindings !== undefined) {
+					const namedBindings = importClause.namedBindings;
+					if (ts.isNamespaceImport(namedBindings)) {
+						const symbol = this.symbols.getLeafSymbolAtLocation(namedBindings.name);
+						if (symbol !== undefined && !this.excludes.has(symbol)) {
+							importedSymbols.push({ symbol, name: namedBindings.name.getText() });
+						}
+					} else if (ts.isNamedImports(namedBindings)) {
+						for (const element of namedBindings.elements) {
+							const symbol = this.symbols.getLeafSymbolAtLocation(element.name);
+							if (symbol !== undefined && !this.excludes.has(symbol)) {
+								importedSymbols.push({ symbol, name: element.name.getText() });
+							}
+						}
+					}
+				}
+			}
+			if (this.cacheInfo === undefined) {
+				if (outSideRanges === undefined) {
+					outSideRanges = [];
+				}
+				const start = block.before !== undefined ? CacheScopes.createRange(block.before, sourceFile).end : CacheScopes.createRange(block.imports[0], sourceFile).start;
+				const end = block.after !== undefined ? CacheScopes.createRange(block.after, sourceFile).start : CacheScopes.createRange(block.imports[block.imports.length - 1], sourceFile).end;
+				outSideRanges.push({ start, end });
+			}
+		}
+
+		for (const { symbol, name } of importedSymbols) {
+			const flags = symbol.flags;
+			if ((flags & (ts.SymbolFlags.Class | ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias | ts.SymbolFlags.Enum | ts.SymbolFlags.Alias | ts.SymbolFlags.ValueModule)) === 0) {
 				continue;
 			}
-			const [handled, key] = this.handleSymbolIfKnown(result, contextSymbol);
+
+			const [handled, key] = this.handleSymbolIfKnown(result, symbol);
 			if (handled) {
 				continue;
 			}
 
 			const snippetBuilder = new CodeSnippetBuilder(this.session, this.symbols, sourceFile);
-			snippetBuilder.addTypeSymbol(contextSymbol, name);
+			snippetBuilder.addTypeSymbol(symbol, name);
 			const full = !result.addSnippet(snippetBuilder, key, this.priority, SpeculativeKind.emit, true);
 			if (full) {
 				break;
 			}
+		}
+		if (this.cacheInfo === undefined && outSideRanges !== undefined && outSideRanges.length > 0) {
+			result.setCacheInfo({ emitMode: EmitMode.ClientBased, scope: { kind: CacheScopeKind.OutsideRange, ranges: outSideRanges } });
+		}
+	}
 
-			if (importDeclarations !== undefined) {
-				importDeclarations = this.addScopeNode(importDeclarations, symbol, ts.SyntaxKind.ImportDeclaration, sourceFile);
+	private getImportBlocks(sourceFile: tt.SourceFile): ImportBlock[] {
+		if (this.cacheInfo !== undefined) {
+			const imports: tt.ImportDeclaration[] = [];
+			for (const node of tss.Nodes.getChildren(sourceFile, sourceFile)) {
+				if (ts.isImportDeclaration(node)) {
+					imports.push(node);
+				}
 			}
+			return [{ before: undefined, imports, after: undefined }];
+		} else {
+			const result: ImportBlock[] = [];
+			let before: tt.Node | undefined = undefined;
+			let after: tt.Node | undefined = undefined;
+			let imports: tt.ImportDeclaration[] = [];
+			for (const node of tss.Nodes.getChildren(sourceFile, sourceFile)) {
+				if (ts.isImportDeclaration(node)) {
+					imports.push(node);
+				} else {
+					if (imports.length === 0) {
+						before = node;
+					} else {
+						after = node;
+						result.push({ before, imports, after });
+						before = undefined;
+						after = undefined;
+						imports = [];
+					}
+				}
+			}
+			if (imports.length > 0) {
+				result.push({ before, imports, after });
+			}
+			return result;
 		}
-		if (importDeclarations !== undefined && importDeclarations.size > 0 && this.runnableResult !== undefined) {
-			this.runnableResult.setCacheInfo({ emitMode: EmitMode.ClientBased, scope: CacheScopes.createOutsideCacheScope(importDeclarations, sourceFile) });
+	}
+
+	private getCacheScopeNode(): tt.Node | undefined {
+		let current = this.tokenInfo.touching ?? this.tokenInfo.token;
+		if (current === undefined || current.kind === ts.SyntaxKind.EndOfFileToken || current.kind === ts.SyntaxKind.Unknown) {
+			return undefined;
 		}
+		let result: tt.Node | undefined;
+		while (current !== undefined && current.kind !== ts.SyntaxKind.SourceFile) {
+			if (ImportsRunnable.CacheNodes.has(current.kind)) {
+				result = current;
+			}
+			current = current.parent;
+		}
+		return result;
 	}
 }
 
@@ -492,7 +582,7 @@ export abstract class FunctionLikeContextProvider extends ContextProvider {
 		if (runnable !== undefined) {
 			result.addPrimary(runnable);
 		}
-		result.addSecondary(new TypeOfImportsRunnable(session, languageService, context, this.tokenInfo, excludes, this.cacheScope));
+		result.addSecondary(new ImportsRunnable(session, languageService, context, this.tokenInfo, excludes));
 		if (context.neighborFiles.length > 0) {
 			result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo));
 		}

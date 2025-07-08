@@ -859,8 +859,8 @@ class RunnableResultManager implements vscode.Disposable {
 				};
 				let skipItems = false;
 				if (cache !== undefined) {
+					cachedResult.cache = cache;
 					const emitMode = cache.emitMode;
-					cachedResult.emitMode = emitMode;
 					if (emitMode === protocol.EmitMode.ClientBased) {
 						client.push(rr);
 						skipItems = rr.state !== protocol.ContextRunnableState.Finished;

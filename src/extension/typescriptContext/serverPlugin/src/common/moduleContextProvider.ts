@@ -6,7 +6,7 @@ import type tt from 'typescript/lib/tsserverlibrary';
 import TS from './typescript';
 const ts = TS();
 
-import { TypeOfExpressionRunnable, TypeOfImportsRunnable, TypeOfLocalsRunnable, TypesOfNeighborFilesRunnable } from './baseContextProviders';
+import { ImportsRunnable, TypeOfExpressionRunnable, TypeOfLocalsRunnable, TypesOfNeighborFilesRunnable } from './baseContextProviders';
 import { ContextProvider, type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext } from './contextProvider';
 import tss from './typescripts';
 
@@ -37,7 +37,7 @@ export class ModuleContextProvider extends ContextProvider {
 		if (runnable !== undefined) {
 			result.addPrimary(runnable);
 		}
-		result.addSecondary(new TypeOfImportsRunnable(session, languageService, context, this.tokenInfo, excludes, undefined));
+		result.addSecondary(new ImportsRunnable(session, languageService, context, this.tokenInfo, excludes, undefined));
 		if (context.neighborFiles.length > 0) {
 			result.addTertiary(new TypesOfNeighborFilesRunnable(session, languageService, context, this.tokenInfo, undefined));
 		}

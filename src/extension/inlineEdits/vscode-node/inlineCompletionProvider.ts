@@ -35,6 +35,8 @@ import { InlineEditModel } from './inlineEditModel';
 import { learnMoreCommandId, learnMoreLink } from './inlineEditProviderFeature';
 import { isInlineSuggestion } from './isInlineSuggestion';
 import { InlineEditLogger } from './parts/inlineEditLogger';
+import { Schemas } from '../../../util/vs/base/common/network';
+import { isWindows } from '../../../util/vs/base/common/platform';
 
 export interface NesCompletionItem extends InlineCompletionItem {
 	readonly telemetryBuilder: NextEditProviderTelemetryBuilder;
@@ -135,6 +137,11 @@ export class InlineCompletionProviderImpl implements InlineCompletionItemProvide
 
 		if (!isInlineEditsEnabled && !serveAsCompletionsProvider) {
 			tracer.returns('inline edits disabled');
+			return undefined;
+		}
+
+		if (document.uri.scheme === Schemas.vscodeNotebookCell && isWindows) {
+			tracer.returns('inline edits for notebooks on Windows is disabled');
 			return undefined;
 		}
 

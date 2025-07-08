@@ -377,7 +377,7 @@ class TelemetrySender {
 	}
 
 	public sendSpeculativeRequestTelemetry(context: RequestContext, originalRequestId: string, numberOfItems: number): void {
-		const sampleTelemetry = context.sampleTelemetry ?? 1;
+		const sampleTelemetry = Math.max(1, Math.min(100, context.sampleTelemetry ?? 1));
 		const shouldSendTelemetry = sampleTelemetry === 1 || this.sendSpeculativeRequestTelemetryCounter % sampleTelemetry === 0;
 		this.sendSpeculativeRequestTelemetryCounter++;
 
@@ -421,7 +421,7 @@ class TelemetrySender {
 		const fileSize = document.getText().length;
 		const cachedItemsForSpeculativeRequest = data.cachedItemsForSpeculativeRequest;
 
-		const sampleTelemetry = context.sampleTelemetry ?? 1;
+		const sampleTelemetry = Math.max(1, Math.min(100, context.sampleTelemetry ?? 1));
 		const shouldSendTelemetry = sampleTelemetry === 1 || this.sendRequestTelemetryCounter % sampleTelemetry === 0;
 		this.sendRequestTelemetryCounter++;
 		if (shouldSendTelemetry) {

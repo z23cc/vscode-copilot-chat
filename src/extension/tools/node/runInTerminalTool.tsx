@@ -58,11 +58,24 @@ export class RunInTerminalTool extends Disposable implements ICopilotTool<IRunIn
 		@ILogService private readonly logService: ILogService,
 		@ITelemetryService private readonly telemetryService: ITelemetryService,
 		@ISimulationTestContext private readonly simulationTestContext: ISimulationTestContext,
-		@IWorkspaceService private readonly workspaceService: IWorkspaceService,
+		@IWorkspaceService private readonly workspaceService: IWorkspaceService
 	) {
 		super();
 
 		this._commandLineAutoApprover = this.instantiationService.createInstance(CommandLineAutoApprover);
+	}
+
+	/**
+	 * Notifies the chat agent with the output of a background terminal when idle.
+	 * This is a stub for integration with the chat agent system.
+	 */
+	private _notifyChatAgentWithOutput(id: string, output: string) {
+		// TODO: Integrate with chat agent system to provide output.
+		// For now, log to console as a placeholder.
+		GetTerminalOutputTool.call({ id } as any);
+		// Optionally notify or log background terminal output here.
+		this.logService.logger.info(`Background terminal ${id} idle for 20s. Output:\n${output}`);
+		// Example: this.chatAgent?.handleTerminalIdleOutput(id, output);
 	}
 
 	async invoke(options: vscode.LanguageModelToolInvocationOptions<IRunInTerminalParams>, token: CancellationToken) {
@@ -101,7 +114,14 @@ export class RunInTerminalTool extends Disposable implements ICopilotTool<IRunIn
 
 			try {
 				this.logService.logger.debug(`RunInTerminalTool: Starting background execution \`${command}\``);
-				const execution = new BackgroundTerminalExecution(toolTerminal.terminal, command);
+				const execution = new BackgroundTerminalExecution(
+					toolTerminal.terminal,
+					command,
+					(id, output) => {
+						this._notifyChatAgentWithOutput(id, output);
+					},
+					termId
+				);
 				RunInTerminalTool.executions.set(termId, execution);
 				const resultText = (
 					didUserEditCommand
@@ -436,16 +456,34 @@ export function sanitizeTerminalOutput(output: string): string {
 
 class BackgroundTerminalExecution {
 	private _output: string = '';
+	private _idleTimer: NodeJS.Timeout | undefined;
+	private _idleTimeoutMs = 20000; // 20 seconds
+	private _notified = false;
 	get output(): string {
 		return sanitizeTerminalOutput(this._output);
 	}
 
 	constructor(
 		public readonly terminal: vscode.Terminal,
-		command: string
+		command: string,
+		private readonly onIdle?: (id: string, output: string) => void,
+		private readonly id?: string
 	) {
 		const shellExecution = terminal.shellIntegration!.executeCommand(command);
 		this.init(shellExecution);
+		this._startIdleTimer();
+	}
+
+	private _startIdleTimer() {
+		if (this._idleTimer) {
+			clearTimeout(this._idleTimer);
+		}
+		this._idleTimer = setTimeout(() => {
+			if (!this._notified && this.onIdle && this.id) {
+				this._notified = true;
+				this.onIdle(this.id, this.output);
+			}
+		}, this._idleTimeoutMs);
 	}
 
 	private async init(shellExecution: vscode.TerminalShellExecution) {
@@ -453,9 +491,15 @@ class BackgroundTerminalExecution {
 			const stream = shellExecution.read();
 			for await (const chunk of stream) {
 				this._output += chunk;
+				this._startIdleTimer();
 			}
 		} catch (e) {
 			this._output += e instanceof Error ? e.message : String(e);
+		}
+		// Final idle check after stream ends
+		if (!this._notified && this.onIdle && this.id) {
+			this._notified = true;
+			this.onIdle(this.id, this.output);
 		}
 	}
 }

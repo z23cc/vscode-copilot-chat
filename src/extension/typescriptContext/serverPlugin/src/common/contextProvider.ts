@@ -164,7 +164,7 @@ export abstract class Search<R> extends ProgramContext {
 			return undefined;
 		}
 		if (Symbols.isAlias(result)) {
-			result = this.symbols.getLeafAliasedSymbol(result);
+			result = this.symbols.getLeafSymbol(result);
 		}
 		let counter = 0;
 		while (Symbols.isTypeAlias(result) && counter < 10) {
@@ -1063,34 +1063,15 @@ export class ContextRunnableCollector {
 
 export abstract class ContextProvider {
 
-	public readonly symbolsToQuery?: tt.SymbolFlags | undefined;
-
-	constructor(symbolsToQuery?: tt.SymbolFlags | undefined) {
-		this.symbolsToQuery = symbolsToQuery;
+	constructor() {
 	}
 
 	public isCallableProvider?: boolean;
-	public getCallableCacheScope?(): CacheScope | undefined;
-	public getImportsByCacheRange?(): Range | undefined;
 	public abstract provide(result: ContextRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void;
-
-	protected _getImportsByCacheRange(node: tt.Node): Range {
-		const sourceFile = node.getSourceFile();
-		const startOffset = node.getStart(sourceFile);
-		const start = ts.getLineAndCharacterOfPosition(sourceFile, startOffset);
-		const end = ts.getLineAndCharacterOfPosition(sourceFile, node.getEnd());
-		return {
-			start,
-			end,
-		};
-	}
 }
 
 export interface ProviderComputeContext {
-	getSymbolsToQuery(): tt.SymbolFlags;
-	getImportsByCacheRange(): Range | undefined;
 	isFirstCallableProvider(contextProvider: ContextProvider): boolean;
-	getCallableCacheScope(): CacheScope | undefined;
 }
 export type ContextProviderFactory = (node: tt.Node, tokenInfo: tss.TokenInfo, context: ProviderComputeContext) => ContextProvider | undefined;
 

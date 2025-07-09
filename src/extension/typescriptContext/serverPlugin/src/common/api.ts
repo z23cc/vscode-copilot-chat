@@ -12,52 +12,27 @@ import { ContextProvider, ContextRunnableCollector, RecoverableError, RequestCon
 import { FunctionContextProvider } from './functionContextProvider';
 import { ConstructorContextProvider, MethodContextProvider } from './methodContextProvider';
 import { ModuleContextProvider } from './moduleContextProvider';
-import { type CacheScope, type FilePath, type Range } from './protocol';
+import { type FilePath } from './protocol';
 import { SourceFileContextProvider } from './sourceFileContextProvider';
 import tss from './typescripts';
 
 class ProviderComputeContextImpl implements ProviderComputeContext {
 
 	private firstCallableProvider: ContextProvider | undefined;
-	private symbolsToQuery: tt.SymbolFlags;
-	private importsByCacheRange: Range | undefined;
-	private callableProviderCacheScope: CacheScope | undefined;
 
 	constructor() {
-		this.symbolsToQuery = ts.SymbolFlags.None;
 		this.firstCallableProvider = undefined;
 	}
 
 	public update(contextProvider: ContextProvider): ContextProvider {
-		if (contextProvider.symbolsToQuery !== undefined && contextProvider.symbolsToQuery !== ts.SymbolFlags.None) {
-			this.symbolsToQuery |= contextProvider.symbolsToQuery;
-		}
-		if (this.importsByCacheRange === undefined && typeof contextProvider.getImportsByCacheRange === 'function') {
-			this.importsByCacheRange = contextProvider.getImportsByCacheRange();
-		}
 		if (this.firstCallableProvider === undefined && contextProvider.isCallableProvider !== undefined && contextProvider.isCallableProvider === true) {
 			this.firstCallableProvider = contextProvider;
-			if (typeof contextProvider.getCallableCacheScope === 'function') {
-				this.callableProviderCacheScope = contextProvider.getCallableCacheScope();
-			}
 		}
 		return contextProvider;
 	}
 
-	public getImportsByCacheRange(): Range | undefined {
-		return this.importsByCacheRange;
-	}
-
-	public getSymbolsToQuery(): tt.SymbolFlags {
-		return this.symbolsToQuery;
-	}
-
 	public isFirstCallableProvider(contextProvider: ContextProvider): boolean {
 		return this.firstCallableProvider === contextProvider;
-	}
-
-	public getCallableCacheScope(): CacheScope | undefined {
-		return this.callableProviderCacheScope;
 	}
 }
 

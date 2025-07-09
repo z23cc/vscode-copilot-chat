@@ -3,8 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 import type tt from 'typescript/lib/tsserverlibrary';
-import TS from './typescript';
-const ts = TS();
 
 import { ImportsRunnable, TypeOfExpressionRunnable, TypeOfLocalsRunnable, TypesOfNeighborFilesRunnable } from './baseContextProviders';
 import { ContextProvider, type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext } from './contextProvider';
@@ -19,7 +17,7 @@ export class ModuleContextProvider extends ContextProvider {
 	public override readonly isCallableProvider: boolean;
 
 	constructor(declaration: tt.ModuleDeclaration, tokenInfo: tss.TokenInfo, computeInfo: ProviderComputeContext) {
-		super(ts.SymbolFlags.Function);
+		super();
 		this.declaration = declaration;
 		this.tokenInfo = tokenInfo;
 		this.computeInfo = computeInfo;

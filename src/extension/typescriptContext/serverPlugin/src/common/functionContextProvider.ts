@@ -3,8 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 import tt from 'typescript/lib/tsserverlibrary';
-import TS from './typescript';
-const ts = TS();
 
 import { FunctionLikeContextProvider } from './baseContextProviders';
 import { type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext } from './contextProvider';
@@ -16,7 +14,7 @@ export class FunctionContextProvider extends FunctionLikeContextProvider {
 	protected readonly functionDeclaration: tt.FunctionDeclaration | tt.ArrowFunction | tt.FunctionExpression;
 
 	constructor(functionDeclaration: tt.FunctionDeclaration | tt.ArrowFunction | tt.FunctionExpression, tokenInfo: tss.TokenInfo, computeContext: ProviderComputeContext) {
-		super(ts.SymbolFlags.Function | ts.SymbolFlags.ValueModule, functionDeclaration, tokenInfo, computeContext);
+		super(functionDeclaration, tokenInfo, computeContext);
 		this.functionDeclaration = functionDeclaration;
 	}
 

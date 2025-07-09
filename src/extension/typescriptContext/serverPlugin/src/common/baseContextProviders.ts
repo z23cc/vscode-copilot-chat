@@ -551,19 +551,13 @@ export abstract class FunctionLikeContextProvider extends ContextProvider {
 	protected readonly computeContext: ProviderComputeContext;
 
 	public override readonly isCallableProvider: boolean;
-	private readonly cacheScope: CacheScope | undefined;
 
-	constructor(symbolsToQuery: tt.SymbolFlags | undefined, declaration: tt.FunctionLikeDeclarationBase, tokenInfo: tss.TokenInfo, computeContext: ProviderComputeContext) {
-		super(symbolsToQuery);
+	constructor(declaration: tt.FunctionLikeDeclarationBase, tokenInfo: tss.TokenInfo, computeContext: ProviderComputeContext) {
+		super();
 		this.functionLikeDeclaration = declaration;
 		this.tokenInfo = tokenInfo;
 		this.computeContext = computeContext;
 		this.isCallableProvider = true;
-		this.cacheScope = CacheScopes.fromDeclaration(declaration);
-	}
-
-	public override getCallableCacheScope(): CacheScope | undefined {
-		return this.cacheScope;
 	}
 
 	public override provide(result: ContextRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {

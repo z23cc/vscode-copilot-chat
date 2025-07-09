@@ -8,7 +8,7 @@ const ts = TS();
 
 import { CodeSnippetBuilder } from './code';
 import { AbstractContextRunnable, ComputeCost, ContextProvider, ContextResult, Search, type ComputeContextSession, type ContextRunnableCollector, type RequestContext, type RunnableResult } from './contextProvider';
-import { EmitMode, Priorities, SpeculativeKind, type Range } from './protocol';
+import { EmitMode, Priorities, SpeculativeKind } from './protocol';
 import tss, { ClassDeclarations, ReferencedByVisitor, Symbols } from './typescripts';
 
 export type TypeInfo = {
@@ -358,12 +358,8 @@ export class WholeClassContextProvider extends ContextProvider {
 	private readonly classDeclaration: tt.ClassDeclaration;
 
 	constructor(classDeclaration: tt.ClassDeclaration, _tokenInfo: tss.TokenInfo) {
-		super(ts.SymbolFlags.Function);
+		super();
 		this.classDeclaration = classDeclaration;
-	}
-
-	public override getImportsByCacheRange(): Range {
-		return this._getImportsByCacheRange(this.classDeclaration);
 	}
 
 	public override provide(result: ContextRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {

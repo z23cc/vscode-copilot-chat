@@ -777,7 +777,7 @@ namespace tss {
 			return [undefined, undefined];
 		}
 
-		public getLeafSymbolAtLocation(node: tt.Node): tt.Symbol | undefined {
+		public getAliasedSymbolAtLocation(node: tt.Node): tt.Symbol | undefined {
 			const symbol = this.getSymbolAtLocation(node);
 			if (symbol === undefined) {
 				return undefined;
@@ -786,6 +786,14 @@ namespace tss {
 				return this.typeChecker.getAliasedSymbol(symbol);
 			}
 			return symbol;
+		}
+
+		public getLeafSymbolAtLocation(node: tt.Node): tt.Symbol | undefined {
+			const symbol = this.getSymbolAtLocation(node);
+			if (symbol === undefined) {
+				return undefined;
+			}
+			return this.getLeafSymbol(symbol);
 		}
 
 		public getSymbolAtTypeNodeLocation(node: tt.TypeNode): tt.Symbol | undefined {
@@ -798,7 +806,11 @@ namespace tss {
 			}
 		}
 
-		public getLeafAliasedSymbol(symbol: tt.Symbol): tt.Symbol {
+		public getAliasedSymbol(symbol: tt.Symbol): tt.Symbol | undefined {
+			return Symbols.isAlias(symbol) ? this.typeChecker.getAliasedSymbol(symbol) : symbol;
+		}
+
+		public getLeafSymbol(symbol: tt.Symbol): tt.Symbol {
 			let count = 0;
 			while (Symbols.isAlias(symbol) && count++ < 10) {
 				symbol = this.typeChecker.getAliasedSymbol(symbol);
@@ -862,7 +874,9 @@ namespace tss {
 						// In TS classes must come first.
 						for (const heritageClause of heritageClauses) {
 							for (const type of heritageClause.types) {
-								const superType = this.getLeafSymbolAtLocation(type.expression);
+								// We can't reach to the leave symbol here since in a hierarchy we need to
+								// reference Type References by name.
+								const superType = this.getAliasedSymbolAtLocation(type.expression);
 								if (superType !== undefined && !seen.has(superType)) {
 									seen.add(superType);
 									yield includePath ? [symbol, superType] : superType;
@@ -885,13 +899,13 @@ namespace tss {
 						if (ts.isTypeAliasDeclaration(declaration)) {
 							const type = declaration.type;
 							if (ts.isTypeLiteralNode(type)) {
-								const superType = this.getLeafSymbolAtLocation(type);
+								const superType = this.getAliasedSymbolAtLocation(type);
 								if (superType !== undefined && !seen.has(superType)) {
 									seen.add(superType);
 									yield includePath ? [symbol, superType] : superType;
 								}
 							} else if (ts.isTypeReferenceNode(type)) {
-								const superType = this.getLeafSymbolAtLocation(type.typeName);
+								const superType = this.getAliasedSymbolAtLocation(type.typeName);
 								if (superType !== undefined && !seen.has(superType)) {
 									// This is something like type _NameLength = NameLength
 									// Yield NameLength since it could represent and interface.
@@ -964,7 +978,7 @@ namespace tss {
 						}
 						// TypeScript has exactly one extends clause.
 						const type = heritageClause.types[0];
-						const superClass = this.getLeafSymbolAtLocation(type.expression);
+						const superClass = this.getAliasedSymbolAtLocation(type.expression);
 						if (superClass !== undefined && !seen.has(superClass)) {
 							seen.add(superClass);
 							yield superClass;
@@ -981,7 +995,7 @@ namespace tss {
 			}
 			for (const heritageClause of declaration.heritageClauses) {
 				for (const type of heritageClause.types) {
-					const superType = this.getLeafSymbolAtLocation(type.expression);
+					const superType = this.getAliasedSymbolAtLocation(type.expression);
 					if (superType !== undefined && superType === symbol) {
 						return true;
 					}
@@ -1002,7 +1016,7 @@ namespace tss {
 				if (heritageClause.types.length < 1) {
 					return false;
 				}
-				const superType = this.getLeafSymbolAtLocation(heritageClause.types[0].expression);
+				const superType = this.getAliasedSymbolAtLocation(heritageClause.types[0].expression);
 				if (superType !== undefined && superType === symbol) {
 					return true;
 				}
@@ -1051,7 +1065,7 @@ namespace tss {
 					const referencedBy = new ReferencedByVisitor(this.program, declaration.getSourceFile(), preferredSourceFiles, stateProvider, token);
 					for (const sourceFile of referencedBy) {
 						for (const typeDeclaration of traversal.getDeclarations(sourceFile)) {
-							const symbol = this.getLeafSymbolAtLocation(typeDeclaration.name ? typeDeclaration.name : typeDeclaration);
+							const symbol = this.getAliasedSymbolAtLocation(typeDeclaration.name ? typeDeclaration.name : typeDeclaration);
 							if (symbol === undefined || seen.has(symbol)) {
 								continue;
 							}

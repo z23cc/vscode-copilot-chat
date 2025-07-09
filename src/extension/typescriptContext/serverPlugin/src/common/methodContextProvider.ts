@@ -12,7 +12,7 @@ import {
 	AbstractContextRunnable, ComputeCost, ContextResult, RecoverableError, Search, type ComputeContextSession, type ContextRunnableCollector, type ProviderComputeContext, type RequestContext,
 	type RunnableResult
 } from './contextProvider';
-import { EmitMode, Priorities, SpeculativeKind, type CacheInfo, type Range } from './protocol';
+import { EmitMode, Priorities, SpeculativeKind, type CacheInfo } from './protocol';
 import tss, { ClassDeclarations, Declarations, Symbols, Traversal, type StateProvider, type TokenInfo } from './typescripts';
 
 abstract class ClassPropertyBlueprintSearch<T extends tt.MethodDeclaration | tt.ConstructorDeclaration> extends Search<tt.ClassDeclaration> {
@@ -475,15 +475,10 @@ abstract class ClassPropertyContextProvider<T extends tt.MethodDeclaration | tt.
 	public override readonly isCallableProvider: boolean;
 
 
-	constructor(symbolsToQuery: tt.SymbolFlags | undefined, declaration: T, tokenInfo: TokenInfo, computeContext: ProviderComputeContext) {
-		super(symbolsToQuery, declaration, tokenInfo, computeContext);
+	constructor(declaration: T, tokenInfo: TokenInfo, computeContext: ProviderComputeContext) {
+		super(declaration, tokenInfo, computeContext);
 		this.declaration = declaration;
 		this.isCallableProvider = true;
-	}
-
-	public override getImportsByCacheRange(): Range | undefined {
-		const parent = this.declaration.parent;
-		return ts.isClassDeclaration(parent) ? this._getImportsByCacheRange(parent) : undefined;
 	}
 
 	protected getTypeExcludes(languageService: tt.LanguageService, context: RequestContext): Set<tt.Symbol> {
@@ -600,7 +595,7 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 			if (typeSymbol === undefined) {
 				return;
 			}
-			typeSymbol = symbols.getLeafAliasedSymbol(typeSymbol);
+			typeSymbol = symbols.getLeafSymbol(typeSymbol);
 			let name: string | undefined = undefined;
 			const declaration = Symbols.getDeclaration<tt.PropertyDeclaration>(symbol, ts.SyntaxKind.PropertyDeclaration);
 			if (declaration !== undefined) {
@@ -621,7 +616,7 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 				if (typeSymbol === undefined) {
 					yield PropertiesTypeRunnable.NoEmitData;
 				}
-				typeSymbol = symbols.getLeafAliasedSymbol(typeSymbol);
+				typeSymbol = symbols.getLeafSymbol(typeSymbol);
 				let name: string | undefined = undefined;
 				const declaration = signature.getDeclaration();
 				if (declaration !== undefined) {
@@ -639,7 +634,7 @@ class PropertiesTypeRunnable extends AbstractContextRunnable {
 export class MethodContextProvider extends ClassPropertyContextProvider<tt.MethodDeclaration> {
 
 	constructor(declaration: tt.MethodDeclaration, tokenInfo: TokenInfo, computeContext: ProviderComputeContext) {
-		super(ts.SymbolFlags.Function, declaration, tokenInfo, computeContext);
+		super(declaration, tokenInfo, computeContext);
 	}
 
 	public override provide(result: ContextRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {
@@ -703,7 +698,7 @@ class SimilarConstructorRunnable extends SimilarPropertyRunnable<tt.ConstructorD
 export class ConstructorContextProvider extends ClassPropertyContextProvider<tt.ConstructorDeclaration> {
 
 	constructor(declaration: tt.ConstructorDeclaration, tokenInfo: TokenInfo, computeContext: ProviderComputeContext) {
-		super(ts.SymbolFlags.Function, declaration, tokenInfo, computeContext);
+		super(declaration, tokenInfo, computeContext);
 	}
 
 	public override provide(result: ContextRunnableCollector, session: ComputeContextSession, languageService: tt.LanguageService, context: RequestContext, token: tt.CancellationToken): void {

@@ -7,6 +7,7 @@ import { spawn } from 'child_process';
 import { ILogService } from '../../../platform/log/common/logService';
 import { Emitter, Event } from '../../../util/vs/base/common/event';
 import { Disposable } from '../../../util/vs/base/common/lifecycle';
+import { LanguageModelServer } from './langModelServer';
 
 // taken from https://github.com/microsoft/vscode/blob/499fb52ae8c985485e6503669f3711ee0d6f31dc/src/vs/base/common/strings.ts#L731
 function removeAnsiEscapeCodes(str: string): string {
@@ -314,17 +315,24 @@ export class CodexClient extends Disposable {
 			this._proc = undefined;
 		});
 
+		const lmServer = new LanguageModelServer();
+		await lmServer.start();
+		const lmServerConfig = lmServer.getConfig();
+
 		// Configure session
 		await this._sendSubmission({
 			type: 'configure_session',
 			provider: {
 				name: 'OpenAI',
-				base_url: 'https://api.openai.com/v1',
-				env_key: 'OPENAI_API_KEY',
-				env_key_instructions: 'Create an API key (https://platform.openai.com) and export it as an environment variable.',
-				wire_api: 'responses',
+				// base_url: 'https://api.openai.com/v1',
+				// base_url: `http://localhost:${lmServerConfig.port}/v1`,
+				// env_key: 'OPENAI_API_KEY',
+				// env_key_instructions: 'Create an API key (https://platform.openai.com) and export it as an environment variable.',
+				// wire_api: 'responses',
+				wire_api: 'chat',
 			},
-			model: 'codex-mini-latest',
+			// model: 'codex-mini-latest',
+			model: 'gpt-4.1',
 			model_reasoning_effort: 'none',
 			model_reasoning_summary: 'none',
 			approval_policy: AskForApproval.Untrusted,

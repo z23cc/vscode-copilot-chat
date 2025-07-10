@@ -78,8 +78,8 @@ export class CodexAgentManager {
 						break;
 					}
 					case 'exec_command_begin': {
-						// const cmd = eventMsg.command.join(' ');
-						// progress.markdown(`⚡ **Executing:** \`${cmd}\``);
+						const cmd = eventMsg.command.join(' ');
+						progress.markdown(`⚡ **Executing:** \`${cmd}\``);
 						break;
 					}
 					case 'exec_command_end':

@@ -4,9 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 import { SQLiteSlottedCache } from './cache';
 import { CacheableChatRequest, CachedResponse, IChatMLCache } from './cachingChatMLFetcher';
+import { CurrentTestRunInfo } from './simulationContext';
 
 export class ChatMLSQLiteCache extends SQLiteSlottedCache<CacheableChatRequest, CachedResponse> implements IChatMLCache {
-	constructor(salt: string) {
-		super('request', salt);
+	constructor(info: CurrentTestRunInfo, salt: string) {
+		super(info, 'request', salt);
 	}
 }

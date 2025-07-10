@@ -7,6 +7,7 @@ import * as path from 'path';
 import { EmbeddingVector } from '../../src/platform/embeddings/common/embeddingsComputer';
 import { SQLiteCache } from './cache';
 import { CacheableEmbeddingRequest, IEmbeddingsCache } from './cachingEmbeddingsFetcher';
+import { CurrentTestRunInfo } from './simulationContext';
 
 export const usedEmbeddingsCaches = new Set<string>();
 
@@ -58,7 +59,7 @@ interface ICacheEntry {
 }
 
 export class EmbeddingsSQLiteCache extends SQLiteCache<CacheableEmbeddingRequest, EmbeddingVector> implements IEmbeddingsCache {
-	constructor(salt: string) {
-		super('embeddings', salt);
+	constructor(currentTestRunInfo: CurrentTestRunInfo, salt: string) {
+		super(currentTestRunInfo, 'embeddings', salt);
 	}
 }

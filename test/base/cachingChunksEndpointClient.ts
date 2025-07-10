@@ -17,6 +17,7 @@ import { IRange, Range } from '../../src/util/vs/editor/common/core/range';
 import { IInstantiationService } from '../../src/util/vs/platform/instantiation/common/instantiation';
 import { CHUNKING_ENDPOINT_CACHE_SALT } from '../cacheSalt';
 import { SQLiteCache } from './cache';
+import { CurrentTestRunInfo } from './simulationContext';
 
 interface ISerializedFileChunk {
 	fileUriString: string;
@@ -139,8 +140,8 @@ export class ChunkingEndpointClientCache implements IChunkingEndpointClientCache
 
 export class ChunkingEndpointClientSQLiteCache extends SQLiteCache<CacheableChunkingEndpointClientRequest, FileChunkWithEmbedding[]> implements IChunkingEndpointClientCache {
 
-	constructor(salt: string) {
-		super('chunks-endpoint', salt);
+	constructor(currentTestRunInfo: CurrentTestRunInfo, salt: string) {
+		super(currentTestRunInfo, 'chunks-endpoint', salt);
 	}
 
 	override async get(req: CacheableChunkingEndpointClientRequest): Promise<FileChunkWithEmbedding[] | undefined> {

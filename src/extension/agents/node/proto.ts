@@ -1,0 +1,444 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { spawn } from 'child_process';
+import { ILogService } from '../../../platform/log/common/logService';
+import { Emitter, Event } from '../../../util/vs/base/common/event';
+import { Disposable } from '../../../util/vs/base/common/lifecycle';
+
+// taken from https://github.com/microsoft/vscode/blob/499fb52ae8c985485e6503669f3711ee0d6f31dc/src/vs/base/common/strings.ts#L731
+function removeAnsiEscapeCodes(str: string): string {
+	const CSI_SEQUENCE = /(:?\x1b\[|\x9B)[=?>!]?[\d;:]*["$#'* ]?[a-zA-Z@^`{}|~]/g;
+	if (str) {
+		str = str.replace(CSI_SEQUENCE, '');
+	}
+	return str;
+}
+
+type ChildProcess = any;
+
+// Submission Queue types
+interface Submission {
+	id: string;
+	op: Op;
+}
+
+type Op =
+	| ConfigureSessionOp
+	| UserInputOp
+	| InterruptOp
+	| ExecApprovalOp
+	| PatchApprovalOp
+	| AddToHistoryOp
+	| GetHistoryEntryRequestOp;
+
+interface ConfigureSessionOp {
+	type: 'configure_session';
+	id?: string;
+	provider?: {
+		name: string;
+		base_url: string;
+		env_key?: string;
+		env_key_instructions?: string;
+		wire_api: string;
+		query_params?: any;
+	};
+	model?: string;
+	model_reasoning_effort?: string;
+	model_reasoning_summary?: string;
+	instructions?: string;
+	approval_policy: AskForApproval;
+	sandbox_policy?: { mode: string };
+	disable_response_storage?: boolean;
+	notify?: string[];
+	cwd: string;
+}
+
+enum AskForApproval {
+	Untrusted = 'untrusted',
+	OnFailure = 'on-failure',
+	Never = 'Never'
+}
+
+interface UserInputOp {
+	type: 'user_input';
+	id?: string;
+	items: InputItem[];
+}
+
+interface InterruptOp {
+	type: 'interrupt';
+	id?: string;
+}
+
+interface ExecApprovalOp {
+	type: 'exec_approval';
+	id?: string;
+	decision: ReviewDecision;
+}
+
+interface PatchApprovalOp {
+	type: 'patch_approval';
+	id?: string;
+	decision: ReviewDecision;
+}
+
+interface AddToHistoryOp {
+	type: 'add_to_history';
+	id?: string;
+	text: string;
+}
+
+interface GetHistoryEntryRequestOp {
+	type: 'get_history_entry_request';
+	id?: string;
+	offset: number;
+	log_id: number;
+}
+
+type InputItem =
+	| { type: 'text'; text: string }
+	| { type: 'image'; image_url: string }
+	| { type: 'local_image'; path: string };
+
+type ReviewDecision = 'approved' | 'approved_for_session' | 'denied' | 'abort';
+
+// Event Queue types
+interface CodexEvent {
+	id: string;
+	msg: EventMsg;
+}
+
+type EventMsg =
+	| ErrorEvent
+	| TaskStartedEvent
+	| TaskCompleteEvent
+	| TokenCountEvent
+	| AgentMessageEvent
+	| AgentReasoningEvent
+	| SessionConfiguredEvent
+	| McpToolCallBeginEvent
+	| McpToolCallEndEvent
+	| ExecCommandBeginEvent
+	| ExecCommandEndEvent
+	| ExecApprovalRequestEvent
+	| ApplyPatchApprovalRequestEvent
+	| BackgroundEventEvent
+	| PatchApplyBeginEvent
+	| PatchApplyEndEvent
+	| GetHistoryEntryResponseEvent;
+
+interface ErrorEvent {
+	type: 'error';
+	message: string;
+}
+
+interface TaskStartedEvent {
+	type: 'task_started';
+}
+
+interface TaskCompleteEvent {
+	type: 'task_complete';
+	last_agent_message?: string;
+}
+
+interface TokenCountEvent {
+	type: 'token_count';
+	input_tokens: number;
+	cached_input_tokens?: number;
+	output_tokens: number;
+	reasoning_output_tokens?: number;
+	total_tokens: number;
+}
+
+interface AgentMessageEvent {
+	type: 'agent_message';
+	message: string;
+}
+
+interface AgentReasoningEvent {
+	type: 'agent_reasoning';
+	text: string;
+}
+
+interface SessionConfiguredEvent {
+	type: 'session_configured';
+	session_id: string;
+	model: string;
+	history_log_id: number;
+	history_entry_count: number;
+}
+
+interface McpToolCallBeginEvent {
+	type: 'mcp_tool_call_begin';
+	call_id: string;
+	server: string;
+	tool: string;
+	arguments?: any;
+}
+
+interface McpToolCallEndEvent {
+	type: 'mcp_tool_call_end';
+	call_id: string;
+	result: { success: boolean; content?: any; error?: string };
+}
+
+interface ExecCommandBeginEvent {
+	type: 'exec_command_begin';
+	call_id: string;
+	command: string[];
+	cwd: string;
+}
+
+interface ExecCommandEndEvent {
+	type: 'exec_command_end';
+	call_id: string;
+	stdout: string;
+	stderr: string;
+	exit_code: number;
+}
+
+interface ExecApprovalRequestEvent {
+	type: 'exec_approval_request';
+	command: string[];
+	cwd: string;
+	reason?: string;
+}
+
+interface ApplyPatchApprovalRequestEvent {
+	type: 'apply_patch_approval_request';
+	changes: Record<string, FileChange>;
+	reason?: string;
+	grant_root?: string;
+}
+
+interface BackgroundEventEvent {
+	type: 'background_event';
+	message: string;
+}
+
+interface PatchApplyBeginEvent {
+	type: 'patch_apply_begin';
+	call_id: string;
+	auto_approved: boolean;
+	changes: Record<string, FileChange>;
+}
+
+interface PatchApplyEndEvent {
+	type: 'patch_apply_end';
+	call_id: string;
+	stdout: string;
+	stderr: string;
+	success: boolean;
+}
+
+interface GetHistoryEntryResponseEvent {
+	type: 'get_history_entry_response';
+	offset: number;
+	log_id: number;
+	entry?: any;
+}
+
+type FileChange =
+	| { type: 'add'; content: string }
+	| { type: 'delete' }
+	| { type: 'update'; unified_diff: string; move_path?: string };
+
+/**
+ * Codex Protocol Client
+ * Manages communication with the Codex process via stdin/stdout
+ */
+export class CodexClient extends Disposable {
+	private _proc: ChildProcess | undefined;
+	private _nextSubmissionId = 1;
+
+	// Single event emitter for all Codex events
+	private readonly _onEvent = this._register(new Emitter<CodexEvent>());
+
+	// Public event accessor
+	readonly onEvent: Event<CodexEvent> = this._onEvent.event;
+
+	/**
+	 * Example usage:
+	 *
+	 * client.onEvent(event => {
+	 *   switch (event.type) {
+	 *     case 'agent_message':
+	 *       console.log('Agent says:', event.message);
+	 *       break;
+	 *     case 'exec_approval_request':
+	 *       client.sendExecApproval('approved');
+	 *       break;
+	 *     case 'error':
+	 *       console.error('Error:', event.message);
+	 *       break;
+	 *   }
+	 * });
+	 */
+
+	constructor(
+		@ILogService private readonly logService: ILogService
+	) {
+		super();
+	}
+
+	/**
+	 * Start the Codex process and configure the session
+	 */
+	async start(cwd: string): Promise<void> {
+		if (this._proc) {
+			throw new Error('Codex process already started');
+		}
+
+		// const target = 'codex';
+		const target = '/Users/roblou/code/codex/codex-rs/target/debug/codex';
+		this.logService.logger.info(`Spawning Codex: ${target}`);
+		this._proc = spawn(target, ['proto'], {
+			stdio: ['pipe', 'pipe', 'pipe'],
+			env: {
+				...process.env,
+				RUST_LOG: 'trace'
+			}
+		});
+
+		this._proc.stdout?.setEncoding('utf8');
+		this._proc.stdout?.on('data', (data: string) => this._handleProcessOutput(data));
+		this._proc.stderr?.on('data', (data: Buffer) => {
+			this.logService.logger.info(`Codex stderr: ${removeAnsiEscapeCodes(data.toString())}`);
+		});
+
+		this._proc.on('exit', (code: any) => {
+			console.log('codex proto exited with code', code);
+			this._proc = undefined;
+		});
+
+		// Configure session
+		await this._sendSubmission({
+			type: 'configure_session',
+			provider: {
+				name: 'OpenAI',
+				base_url: 'https://api.openai.com/v1',
+				env_key: 'OPENAI_API_KEY',
+				env_key_instructions: 'Create an API key (https://platform.openai.com) and export it as an environment variable.',
+				wire_api: 'responses',
+			},
+			model: 'codex-mini-latest',
+			model_reasoning_effort: 'none',
+			model_reasoning_summary: 'none',
+			approval_policy: AskForApproval.Untrusted,
+			sandbox_policy: { mode: 'danger-full-access' },
+			cwd: '/Users/roblou/code/debugtest'
+		});
+		// await this._sendSubmission({
+		// 	type: 'configure_session',
+		// 	cwd,
+		// 	approval_policy: AskForApproval.Never,
+		// });
+	}
+
+	/**
+	 * Send user input to Codex
+	 */
+	async sendUserInput(text: string): Promise<void> {
+		await this._sendSubmission({
+			type: 'user_input',
+			items: [{ type: 'text', text }]
+		});
+	}
+
+	/**
+	 * Interrupt the current task
+	 */
+	async interrupt(): Promise<void> {
+		await this._sendSubmission({
+			type: 'interrupt'
+		});
+	}
+
+	/**
+	 * Send approval decision for command execution
+	 */
+	async sendExecApproval(decision: ReviewDecision, requestId?: string): Promise<void> {
+		await this._sendSubmission({
+			type: 'exec_approval',
+			decision,
+			id: requestId
+		});
+	}
+
+	/**
+	 * Send approval decision for patch application
+	 */
+	async sendPatchApproval(decision: ReviewDecision, requestId?: string): Promise<void> {
+		await this._sendSubmission({
+			type: 'patch_approval',
+			decision,
+			id: requestId
+		});
+	}
+
+	/**
+	 * Stop the Codex process
+	 */
+	stop(): void {
+		if (this._proc) {
+			this._proc.kill();
+			this._proc = undefined;
+		}
+	}
+
+	override dispose(): void {
+		this.stop();
+		super.dispose();
+	}
+
+	private async _sendSubmission(op: Op): Promise<void> {
+		if (!this._proc?.stdin) {
+			throw new Error('Codex process not started');
+		}
+
+		const submissionId = (this._nextSubmissionId++).toString();
+		const submission: Submission = {
+			id: submissionId,
+			op: {
+				...op,
+				id: op.id || submissionId
+			} as Op
+		};
+
+		this._writeJsonLine(submission);
+	}
+
+	private _writeJsonLine(obj: any): void {
+		if (!this._proc?.stdin) {
+			return;
+		}
+		const str = JSON.stringify(obj);
+		this.logService.logger.info(`Sending to Codex: ${str}`);
+		this._proc.stdin.write(str + '\n');
+	}
+
+	private _handleProcessOutput(data: string): void {
+		for (const line of data.split(/\r?\n/)) {
+			if (!line.trim()) {
+				continue;
+			}
+
+			try {
+				const event = JSON.parse(line) as CodexEvent;
+				this._handleEvent(event);
+			} catch (e) {
+				console.error('Failed to parse event:', line, e);
+			}
+		}
+	}
+
+	private _handleEvent(event: CodexEvent): void {
+		this.logService.logger.info(`Got Codex event: ${JSON.stringify(event)}`);
+
+		// Fire the single event with the message
+		this._onEvent.fire(event);
+	}
+}

@@ -24,6 +24,7 @@ import { ChatSummarizerProvider } from '../../prompt/node/summarizer';
 import { ChatTitleProvider } from '../../prompt/node/title';
 import { IUserFeedbackService } from './userActions';
 import { getAdditionalWelcomeMessage } from './welcomeMessageProvider';
+import { CodexAgentManager } from '../../agents/node/codexAgent';
 
 export class ChatAgentService implements IChatAgentService {
 	declare readonly _serviceBrand: undefined;
@@ -86,6 +87,7 @@ class ChatAgents implements IDisposable {
 		this._disposables.add(this.registerVSCodeAgent());
 		this._disposables.add(this.registerTerminalAgent());
 		this._disposables.add(this.registerTerminalPanelAgent());
+		this._disposables.add(this.registerCodexAgent());
 	}
 
 	private createAgent(name: string, defaultIntentIdOrGetter: IntentOrGetter, options?: { id?: string }): vscode.ChatParticipant {
@@ -136,6 +138,15 @@ class ChatAgents implements IDisposable {
 		terminalPanelAgent.iconPath = new vscode.ThemeIcon('terminal');
 
 		return terminalPanelAgent;
+	}
+
+	private registerCodexAgent(): IDisposable {
+		const id = 'github.copilot.codex';
+		const codexAgentManager = this.instantiationService.createInstance(CodexAgentManager);
+		const agent = vscode.chat.createChatParticipant(id, codexAgentManager.handleRequest.bind(codexAgentManager));
+		// agent.iconPath = new vscode.ThemeIcon('');
+
+		return agent;
 	}
 
 	private async initDefaultAgentRequestorProps(defaultAgent: vscode.ChatParticipant) {

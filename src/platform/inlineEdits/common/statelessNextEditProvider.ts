@@ -22,7 +22,7 @@ import { LanguageId } from './dataTypes/languageId';
 import { DebugRecorderBookmark } from './debugRecorderBookmark';
 import { InlineEditRequestLogContext } from './inlineEditLogContext';
 import { stringifyChatMessages } from './utils/stringifyChatMessages';
-import { IXtabHistoryEntry } from './workspaceEditTracker/nesXtabHistoryTracker';
+import { IXtabContext } from './workspaceEditTracker/nesXtabContext';
 
 export const enum ShowNextEditPreference {
 	Always = 'always',
@@ -60,7 +60,7 @@ export class StatelessNextEditRequest<TFirstEdit = any> {
 		public readonly documentBeforeEdits: StringText,
 		public readonly documents: readonly StatelessNextEditDocument[],
 		public readonly activeDocumentIdx: number,
-		public readonly xtabEditHistory: IXtabHistoryEntry[],
+		public readonly xtabCtx: IXtabContext,
 		public readonly firstEdit: DeferredPromise<Result<TFirstEdit, NoNextEditReason>>,
 		public readonly logContext: InlineEditRequestLogContext,
 		public readonly recordingBookmark?: DebugRecorderBookmark,

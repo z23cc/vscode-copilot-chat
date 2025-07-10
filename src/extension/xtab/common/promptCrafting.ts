@@ -161,7 +161,7 @@ function getEditDiffHistory(
 	const allDiffs: string[] = [];
 
 	// we traverse in reverse (ie from most recent to least recent) because we may terminate early due to token-budget overflow
-	for (const entry of request.xtabEditHistory.reverse()) {
+	for (const entry of request.xtabCtx.history.reverse()) {
 		if (allDiffs.length >= nEntries) { // we've reached the maximum number of entries
 			break;
 		}
@@ -281,8 +281,8 @@ function getRecentCodeSnippets(
 	// get last documents besides active document
 	// enforces the option to include/exclude viewed files
 	const docsBesidesActiveDoc: IXtabHistoryEntry[] = []; // from most to least recent
-	for (let i = request.xtabEditHistory.length - 1, seenDocuments = new Set<DocumentId>(); i >= 0; --i) {
-		const entry = request.xtabEditHistory[i];
+	for (let i = request.xtabCtx.history.length - 1, seenDocuments = new Set<DocumentId>(); i >= 0; --i) {
+		const entry = request.xtabCtx.history[i];
 
 		if (!includeViewedFiles && entry.kind === 'visibleRanges') {
 			continue;

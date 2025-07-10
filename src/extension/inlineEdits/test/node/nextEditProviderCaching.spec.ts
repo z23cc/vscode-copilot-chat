@@ -15,7 +15,7 @@ import { ObservableGit } from '../../../../platform/inlineEdits/common/observabl
 import { MutableObservableWorkspace } from '../../../../platform/inlineEdits/common/observableWorkspace';
 import { IStatelessNextEditProvider, NoNextEditReason, PushEdit, StatelessNextEditRequest, StatelessNextEditResult, StatelessNextEditTelemetryBuilder } from '../../../../platform/inlineEdits/common/statelessNextEditProvider';
 import { NesHistoryContextProvider } from '../../../../platform/inlineEdits/common/workspaceEditTracker/nesHistoryContextProvider';
-import { NesXtabHistoryTracker } from '../../../../platform/inlineEdits/common/workspaceEditTracker/nesXtabHistoryTracker';
+import { NesXtabContextTracker } from '../../../../platform/inlineEdits/common/workspaceEditTracker/nesXtabContext';
 import { ILogService, LogServiceImpl } from '../../../../platform/log/common/logService';
 import { NulSimulationTestContext } from '../../../../platform/simulationTestContext/common/simulationTestContext';
 import { ISnippyService, NullSnippyService } from '../../../../platform/snippy/common/snippyService';
@@ -81,7 +81,7 @@ describe('NextEditProvider Caching', () => {
 			}
 		};
 
-		const nextEditProvider: NextEditProvider = new NextEditProvider(obsWorkspace, statelessNextEditProvider, new NesHistoryContextProvider(obsWorkspace, obsGit), new NesXtabHistoryTracker(obsWorkspace), undefined, configService, snippyService, logService, expService);
+		const nextEditProvider: NextEditProvider = new NextEditProvider(obsWorkspace, statelessNextEditProvider, new NesHistoryContextProvider(obsWorkspace, obsGit), new NesXtabContextTracker(obsWorkspace), undefined, configService, snippyService, logService, expService);
 
 		const doc = obsWorkspace.addDocument({
 			id: DocumentId.create(URI.file('/test/test.ts').toString()),

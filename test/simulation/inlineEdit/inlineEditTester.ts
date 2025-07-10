@@ -24,7 +24,7 @@ import { ObservableGit } from '../../../src/platform/inlineEdits/common/observab
 import { ObservableWorkspace } from '../../../src/platform/inlineEdits/common/observableWorkspace';
 import { IHistoryContextProvider } from '../../../src/platform/inlineEdits/common/workspaceEditTracker/historyContextProvider';
 import { NesHistoryContextProvider } from '../../../src/platform/inlineEdits/common/workspaceEditTracker/nesHistoryContextProvider';
-import { NesXtabHistoryTracker } from '../../../src/platform/inlineEdits/common/workspaceEditTracker/nesXtabHistoryTracker';
+import { NesXtabContextTracker } from '../../../src/platform/inlineEdits/common/workspaceEditTracker/nesXtabContext';
 import { IExperimentationService } from '../../../src/platform/telemetry/common/nullExperimentationService';
 import { TestingServiceCollection } from '../../../src/platform/test/node/services';
 import { TaskQueue } from '../../../src/util/common/async';
@@ -112,19 +112,19 @@ export class InlineEditTester {
 		const replayer = new ObservableWorkspaceRecordingReplayer(recordingData, this._includeNextEditSelection);
 		const obsGit = accessor.get(IInstantiationService).createInstance(ObservableGit);
 		const historyContextProvider = new NesHistoryContextProvider(replayer.workspace, obsGit);
-		const nesXtabHistoryTracker = new NesXtabHistoryTracker(replayer.workspace);
+		const xtabContextTracker = new NesXtabContextTracker(replayer.workspace);
 		const debugRecorder = new DebugRecorder(replayer.workspace);
 
 		const { lastDocId } = replayer.replay();
 
 		const expectedEdit = deserializeStringEdit(recordingData.nextUserEdit?.edit ?? serializeStringEdit(StringEdit.empty));
-		const result = await this._runTest(accessor, lastDocId, replayer.workspace, historyContextProvider, nesXtabHistoryTracker, debugRecorder);
+		const result = await this._runTest(accessor, lastDocId, replayer.workspace, historyContextProvider, xtabContextTracker, debugRecorder);
 
 		const r = { ...result, nextUserEdit: expectedEdit, recordingData };
 		return r;
 	}
 
-	private async _runTest(accessor: ServicesAccessor, docId: DocumentId, workspace: ObservableWorkspace, historyContextProvider: IHistoryContextProvider, nesXtabHistoryTracker: NesXtabHistoryTracker, debugRecorder: DebugRecorder | undefined) {
+	private async _runTest(accessor: ServicesAccessor, docId: DocumentId, workspace: ObservableWorkspace, historyContextProvider: IHistoryContextProvider, nesXtabContextTracker: NesXtabContextTracker, debugRecorder: DebugRecorder | undefined) {
 		const instaService = accessor.get(IInstantiationService);
 		const configService = accessor.get(IConfigurationService);
 		const expService = accessor.get(IExperimentationService);
@@ -161,7 +161,7 @@ export class InlineEditTester {
 			nextEditProviderId === ServerPoweredInlineEditProvider.ID
 				? instaService.createInstance(SpyingServerPoweredNesProvider)
 				: createNextEditProvider(nextEditProviderId, instaService);
-		const nextEditProvider = instaService.createInstance(NextEditProvider, workspace, statelessNextEditProvider, historyContextProvider, nesXtabHistoryTracker, debugRecorder);
+		const nextEditProvider = instaService.createInstance(NextEditProvider, workspace, statelessNextEditProvider, historyContextProvider, nesXtabContextTracker, debugRecorder);
 
 		const historyContext = historyContextProvider.getHistoryContext(docId)!;
 		const activeDocument = historyContext.getMostRecentDocument(); // TODO

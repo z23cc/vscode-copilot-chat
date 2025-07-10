@@ -13,7 +13,7 @@ import { IObservableDocument, ObservableWorkspace } from '../../../platform/inli
 import { IStatelessNextEditProvider, NoNextEditReason, PushEdit, ShowNextEditPreference, StatelessNextEditDocument, StatelessNextEditRequest, StatelessNextEditResult } from '../../../platform/inlineEdits/common/statelessNextEditProvider';
 import { autorunWithChanges } from '../../../platform/inlineEdits/common/utils/observable';
 import { DocumentHistory, HistoryContext, IHistoryContextProvider } from '../../../platform/inlineEdits/common/workspaceEditTracker/historyContextProvider';
-import { NesXtabHistoryTracker } from '../../../platform/inlineEdits/common/workspaceEditTracker/nesXtabHistoryTracker';
+import { NesXtabContextTracker } from '../../../platform/inlineEdits/common/workspaceEditTracker/nesXtabContext';
 import { ILogService } from '../../../platform/log/common/logService';
 import { ISnippyService } from '../../../platform/snippy/common/snippyService';
 import { IExperimentationService } from '../../../platform/telemetry/common/nullExperimentationService';
@@ -88,7 +88,7 @@ export class NextEditProvider extends Disposable implements INextEditProvider<Ne
 		private readonly _workspace: ObservableWorkspace,
 		private readonly _statelessNextEditProvider: IStatelessNextEditProvider,
 		private readonly _historyContextProvider: IHistoryContextProvider,
-		private readonly _xtabHistoryTracker: NesXtabHistoryTracker,
+		private readonly _xtabCtxTracker: NesXtabContextTracker,
 		private readonly _debugRecorder: DebugRecorder | undefined,
 		@IConfigurationService private readonly _configService: IConfigurationService,
 		@ISnippyService private readonly _snippyService: ISnippyService,
@@ -403,7 +403,7 @@ export class NextEditProvider extends Disposable implements INextEditProvider<Ne
 
 		const projectedDocuments = historyContext.documents.map(doc => this._processDoc(doc));
 
-		const xtabEditHistory = this._xtabHistoryTracker.getHistory();
+		const xtabCtx = this._xtabCtxTracker.getContext(curDocId);
 
 		function convertLineEditToEdit(nextLineEdit: LineEdit, docId: DocumentId): StringEdit {
 			const doc = projectedDocuments.find(d => d.nextEditDoc.id === docId)!;
@@ -419,7 +419,7 @@ export class NextEditProvider extends Disposable implements INextEditProvider<Ne
 			doc.value.get(),
 			projectedDocuments.map(d => d.nextEditDoc),
 			activeDocAndIdx.idx,
-			xtabEditHistory,
+			xtabCtx,
 			firstEdit,
 			logContext,
 			req.log.recordingBookmark,

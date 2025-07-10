@@ -113,7 +113,7 @@ export class XtabProvider extends ChainedStatelessNextEditProvider {
 
 		logContext.setProviderStartTime();
 		try {
-			if (request.xtabEditHistory.length === 0) {
+			if (request.xtabCtx.history.length === 0) {
 				return StatelessNextEditResult.noEdit(new NoNextEditReason.ActiveDocumentHasNoEdits(), telemetry);
 			}
 

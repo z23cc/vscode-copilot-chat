@@ -3,22 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as crypto from 'crypto';
+import { OpenAI, Raw } from '@vscode/prompt-tsx';
 import * as http from 'http';
 import * as vscode from 'vscode';
+import { convertToApiChatMessage } from '../../../platform/endpoint/vscode-node/extChatEndpoint';
+import { OpenAiFunctionTool } from '../../../platform/networking/common/fetch';
+import { ChatRole } from '../../../platform/networking/common/openai';
 
 interface ServerRequest {
-	nonce: string;
-	modelId?: string;
-	vendor?: string;
-	family?: string;
-	messages: Msg[];
-	options?: vscode.LanguageModelChatRequestOptions;
-}
-interface Msg {
-	role: 'user' | 'assistant' | 'system';
-	content: string;
-	name?: string;
+	model?: string;
+	messages: OpenAI.ChatMessage[];
+	tools?: OpenAiFunctionTool[];
 }
 export interface ServerTextLineResponse {
 	type: 'text';
@@ -138,8 +133,8 @@ class LanguageModelServer {
 
 	constructor() {
 		this.config = {
-			port: 8001, // Will be set to random available port
-			nonce: crypto.randomUUID()
+			port: 0, // Will be set to random available port
+			nonce: 'vscode-nonce'
 		};
 		this.server = this.createServer();
 	}
@@ -171,7 +166,7 @@ class LanguageModelServer {
 					const request: ServerRequest = JSON.parse(body);
 
 					// Verify nonce
-					if (request.nonce !== this.config.nonce) {
+					if (req.headers['x-nonce'] !== this.config.nonce) {
 						res.writeHead(401, { 'Content-Type': 'application/json' });
 						res.end(JSON.stringify({ error: 'Invalid nonce' }));
 						return;
@@ -210,7 +205,7 @@ class LanguageModelServer {
 					const request: ServerRequest = JSON.parse(body);
 
 					// Verify nonce
-					if (request.nonce !== this.config.nonce) {
+					if (req.headers['x-nonce'] !== this.config.nonce) {
 						res.writeHead(401, { 'Content-Type': 'application/json' });
 						res.end(JSON.stringify({ error: 'Invalid nonce' }));
 						return;
@@ -259,21 +254,15 @@ class LanguageModelServer {
 			// Select model based on request criteria
 			let selectedModel: vscode.LanguageModelChat | undefined;
 
-			if (request.modelId?.startsWith('claude-3-5-haiku')) {
-				request.modelId = 'gpt-4o-mini';
+			if (request.model?.startsWith('claude-3-5-haiku')) {
+				request.model = 'gpt-4o-mini';
 			}
-			if (request.modelId?.startsWith('claude-sonnet-4')) {
-				request.modelId = 'claude-sonnet-4';
+			if (request.model?.startsWith('claude-sonnet-4')) {
+				request.model = 'claude-sonnet-4';
 			}
 
-			if (request.modelId) {
-				selectedModel = models.find(m => m.id === request.modelId);
-			} else if (request.vendor && request.family) {
-				selectedModel = models.find(m => m.vendor === request.vendor && m.family === request.family);
-			} else if (request.vendor) {
-				selectedModel = models.find(m => m.vendor === request.vendor);
-			} else if (request.family) {
-				selectedModel = models.find(m => m.family === request.family);
+			if (request.model) {
+				selectedModel = models.find(m => m.id === request.model);
 			} else {
 				// Use first available model if no criteria specified
 				selectedModel = models[0];
@@ -294,10 +283,12 @@ class LanguageModelServer {
 				return;
 			}
 
-			// Set up streaming response with JSONL format
+			// Set up streaming response with SSE format
 			res.writeHead(200, {
-				'Content-Type': 'application/x-ndjson',
-				'Transfer-Encoding': 'chunked'
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache',
+				'Connection': 'keep-alive',
+				'Access-Control-Allow-Origin': '*'
 			});
 
 			// Create cancellation token for the request
@@ -310,22 +301,50 @@ class LanguageModelServer {
 
 			try {
 				// Convert messages to VS Code format
-				const vscodeMessages: vscode.LanguageModelChatMessage[] = request.messages
-					.map(msg => {
-						// Convert system messages to user role since VS Code doesn't support system messages
-						return (msg.role === 'user' || msg.role === 'system')
-							? vscode.LanguageModelChatMessage.User(msg.content, msg.name)
-							: vscode.LanguageModelChatMessage.Assistant(msg.content, msg.name);
-					});
+				const rawMessages: Raw.ChatMessage[] = request.messages.map(msg => {
+					const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+					if (msg.role === ChatRole.Tool) {
+						return {
+							role: Raw.ChatRole.Tool,
+							content: [{ type: Raw.ChatCompletionContentPartKind.Text, text: contentStr }],
+							toolCallId: msg.tool_call_id ?? ''
+						} satisfies Raw.ToolChatMessage;
+					} else if (msg.role === ChatRole.Assistant) {
+						return {
+							role: Raw.ChatRole.Assistant,
+							content: [{ type: Raw.ChatCompletionContentPartKind.Text, text: contentStr }],
+							toolCalls: msg.tool_calls
+						} satisfies Raw.AssistantChatMessage;
+					} else if (msg.role === ChatRole.User) {
+						return {
+							role: Raw.ChatRole.User,
+							content: [{ type: Raw.ChatCompletionContentPartKind.Text, text: contentStr }]
+						} satisfies Raw.UserChatMessage;
+					} else if (msg.role === ChatRole.System) {
+						return {
+							role: Raw.ChatRole.System,
+							content: [{ type: Raw.ChatCompletionContentPartKind.Text, text: contentStr }]
+						} satisfies Raw.SystemChatMessage;
+					}
+
+					return msg;
+				}) as any;
+				const vscodeMessages = convertToApiChatMessage(rawMessages);
 
 				// Make the chat request
 				const chatResponse = await selectedModel.sendRequest(
-					vscodeMessages,
-					request.options,
+					vscodeMessages as any,
+					{
+						tools: request.tools?.map(tool => {
+							return tool.function;
+						})
+					},
 					tokenSource.token
 				);
 
 				// Stream the response - handle both text and tool call parts as JSONL
+				const id = 'chatcmpl-BrqcBMqJ82e03aRCyZmmCzMHU6sgB';
+				let gotToolCalls = false;
 				for await (const part of chatResponse.stream) {
 					if (tokenSource.token.isCancellationRequested) {
 						break;
@@ -333,24 +352,55 @@ class LanguageModelServer {
 
 					if (part instanceof vscode.LanguageModelTextPart) {
 						// Stream text content as JSON line
-						const textData: ServerTextLineResponse = {
-							type: 'text',
-							content: part.value
-						};
-						res.write(JSON.stringify(textData) + '\n');
+						// {"id":"chatcmpl-BrqcBMqJ82e03aRCyZmmCzMHU6sgB","object":"chat.completion.chunk","created":1752173335,"model":"gpt-4.1-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}]}
+						const data = JSON.stringify({
+							id,
+							object: 'chat.completion.chunk',
+							created: Date.now(),
+							model: selectedModel.id,
+							service_tier: 'default',
+							system_fingerprint: null,
+							choices: [{ index: 0, delta: { content: part.value }, logprobs: null, finish_reason: null }]
+						});
+						res.write(`event: chunk\ndata: ${data}\n\n`);
 					} else if (part instanceof vscode.LanguageModelToolCallPart) {
-						// Stream tool call as JSON line
-						const toolCallData: ServerToolCallResponse = {
-							type: 'tool_call',
-							callId: part.callId,
-							name: part.name,
-							input: part.input
-						};
-						res.write(JSON.stringify(toolCallData) + '\n');
+						// received SSE chunk: {"id":"chatcmpl-BrqmkIorZ4AmFc8ebGzLf9ZlBvlJF","object":"chat.completion.chunk","created":1752173990,"model":"gpt-4.1-2025-04-14","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\":"}}]},"logprobs":null,"finish_reason":null}]}
+						gotToolCalls = true;
+						const toolCallData = JSON.stringify({
+							id,
+							object: 'chat.completion.chunk',
+							created: Date.now(),
+							model: selectedModel.id,
+							service_tier: 'default',
+							system_fingerprint: null,
+							choices: [{
+								index: 0,
+								delta: {
+									tool_calls: [{
+										index: 0,
+										function: {
+											name: part.name,
+											arguments: JSON.stringify(part.input)
+										}
+									}]
+								}
+							}],
+						});
+						res.write(`event: tool_call\ndata: ${toolCallData}\n\n`);
 					}
 					// Ignore unknown part types for future compatibility
 				}
 
+				const data = JSON.stringify({
+					id,
+					object: 'chat.completion.chunk',
+					created: Date.now(),
+					model: selectedModel.id,
+					service_tier: 'default',
+					system_fingerprint: null,
+					choices: [{ index: 0, delta: { content: '' }, logprobs: null, finish_reason: gotToolCalls ? 'tool_calls' : 'stop' }]
+				});
+				res.write(`event: chunk\ndata: ${data}\n\n`);
 				res.end();
 			} catch (error) {
 				if (error instanceof vscode.LanguageModelError) {
@@ -716,10 +766,10 @@ class LanguageModelServer {
 
 	public async start(): Promise<void> {
 		return new Promise((resolve) => {
-			this.server.listen('/tmp/foo4.sock', () => {
+			this.server.listen(0, 'localhost', () => {
 				const address = this.server.address();
-				if (address && typeof address === 'string') {
-					// this.config.port = address.port;
+				if (address && typeof address === 'object') {
+					this.config.port = address.port;
 					console.log(`Language Model Server started on http://localhost:${this.config.port}`);
 					console.log(`Server nonce: ${this.config.nonce}`);
 					resolve();

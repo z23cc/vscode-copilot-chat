@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { spawn } from 'child_process';
+import * as fs from 'fs';
 import { ILogService } from '../../../platform/log/common/logService';
 import { Emitter, Event } from '../../../util/vs/base/common/event';
 import { Disposable } from '../../../util/vs/base/common/lifecycle';
@@ -300,8 +301,10 @@ export class CodexClient extends Disposable {
 			stdio: ['pipe', 'pipe', 'pipe'],
 			env: {
 				...process.env,
-				RUST_LOG: 'trace'
-			}
+				RUST_LOG: 'trace',
+				// CODEX_HOME: '/tmp/codex'
+			},
+			cwd: '/Users/roblou/code/debugtest'
 		});
 
 		this._proc.stdout?.setEncoding('utf8');
@@ -319,24 +322,35 @@ export class CodexClient extends Disposable {
 		await lmServer.start();
 		const lmServerConfig = lmServer.getConfig();
 
+		const config = `
+model = "gpt-4.1"
+model_provider = "capi"
+
+[model_providers.capi]
+name = "CAPI"
+base_url = "http://localhost:${lmServerConfig.port}/v1"
+http_headers = { "X-Nonce" = "vscode-nonce" }
+wire_api = "chat"`.trim();
+		fs.writeFileSync('/Users/roblou/.codex/config.toml', config);
+
 		// Configure session
 		await this._sendSubmission({
 			type: 'configure_session',
-			provider: {
-				name: 'OpenAI',
-				// base_url: 'https://api.openai.com/v1',
-				// base_url: `http://localhost:${lmServerConfig.port}/v1`,
-				// env_key: 'OPENAI_API_KEY',
-				// env_key_instructions: 'Create an API key (https://platform.openai.com) and export it as an environment variable.',
-				// wire_api: 'responses',
-				wire_api: 'chat',
-			},
+			// provider: {
+			// 	name: 'capi',
+			// 	// base_url: 'https://api.openai.com/v1',
+			// 	// base_url: `http://localhost:${lmServerConfig.port}/v1`,
+			// 	// env_key: 'OPENAI_API_KEY',
+			// 	// env_key_instructions: 'Create an API key (https://platform.openai.com) and export it as an environment variable.',
+			// 	// wire_api: 'responses',
+			// 	wire_api: 'chat',
+			// } as any,
 			// model: 'codex-mini-latest',
 			model: 'gpt-4.1',
 			model_reasoning_effort: 'none',
 			model_reasoning_summary: 'none',
 			approval_policy: AskForApproval.Untrusted,
-			sandbox_policy: { mode: 'danger-full-access' },
+			sandbox_policy: { mode: 'workspace-write' },
 			cwd: '/Users/roblou/code/debugtest'
 		});
 		// await this._sendSubmission({

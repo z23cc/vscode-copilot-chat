@@ -1431,6 +1431,7 @@
 				"modes": [
 					"agent"
 				],
+				"isEngine": true,
 				"isDefault": true,
 				"isAgent": true,
 				"when": "config.chat.agent.enabled",
@@ -1780,7 +1781,8 @@
 				],
 				"modes": [
 					"agent"
-				]
+				],
+				"isEngine": true
 			}
 		],
 		"languageModels": [

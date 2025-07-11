@@ -42,42 +42,6 @@ export class GetTerminalSelectionTool implements ICopilotTool<void> {
 
 ToolRegistry.registerTool(GetTerminalSelectionTool);
 
-export class GetAllTerminalsTool implements ICopilotTool<void> {
-	public static readonly toolName = ToolName.AllTerminals;
-
-	constructor(
-		@ITerminalService private readonly terminalService: ITerminalService
-	) { }
-
-	async invoke(options: vscode.LanguageModelToolInvocationOptions<void>, token: CancellationToken): Promise<vscode.LanguageModelToolResult> {
-		const allTerminals = await this.terminalService.getAllTerminals();
-		
-		if (allTerminals.length === 0) {
-			return new LanguageModelToolResult([
-				new LanguageModelTextPart('No terminals are currently open.')
-			]);
-		}
-
-		const terminalInfo = allTerminals.map((terminal, index) => {
-			return `${index + 1}. ${terminal.name || 'Unnamed Terminal'} (ID: ${terminal.id})`;
-		}).join('\n');
-
-		return new LanguageModelToolResult([
-			new LanguageModelTextPart(`All open terminals:\n${terminalInfo}`)
-		]);
-	}
-
-	prepareInvocation?(options: vscode.LanguageModelToolInvocationPrepareOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.PreparedToolInvocation> {
-		return {
-			invocationMessage: l10n.t`Getting all terminals`,
-			pastTenseMessage: l10n.t`Got all terminals`
-		};
-	}
-}
-
-ToolRegistry.registerTool(GetTerminalSelectionTool);
-ToolRegistry.registerTool(GetAllTerminalsTool);
-
 export class GetTerminalLastCommandTool implements ICopilotTool<void> {
 	public static readonly toolName = ToolName.TerminalLastCommand;
 

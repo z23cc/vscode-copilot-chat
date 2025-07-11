@@ -54,24 +54,4 @@ suite('Terminal and Task State Integration', () => {
 		strictEqual(copilotTerminals.length, 1);
 		strictEqual(copilotTerminals[0].name, 'Copilot Terminal');
 	});
-
-	test('GetAllTerminalsTool provides visibility into all terminals', async () => {
-		// Simulate the tool output for the new GetAllTerminalsTool
-		const mockTerminals = [
-			{ id: 'copilot-terminal-1', name: 'Copilot' },
-			{ id: 'user-terminal-123', name: 'bash' },
-			{ id: 'user-terminal-456', name: 'PowerShell' }
-		];
-
-		const expectedOutput = `All open terminals:
-1. Copilot (ID: copilot-terminal-1)
-2. bash (ID: user-terminal-123)
-3. PowerShell (ID: user-terminal-456)`;
-
-		const actualOutput = mockTerminals.map((terminal, index) => {
-			return `${index + 1}. ${terminal.name || 'Unnamed Terminal'} (ID: ${terminal.id})`;
-		}).join('\n');
-
-		strictEqual(`All open terminals:\n${actualOutput}`, expectedOutput);
-	});
 });

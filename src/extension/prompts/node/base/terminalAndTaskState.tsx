@@ -44,18 +44,28 @@ export class TerminalAndTaskStatePromptElement extends PromptElement<TerminalAnd
 		}
 
 		if (this.terminalService && Array.isArray(this.terminalService.terminals)) {
+			// Get all terminals from VS Code
+			const allTerminals = this.terminalService.terminals;
+			
+			// Get Copilot terminals to include enhanced metadata when available
 			const copilotTerminals = await this.terminalService.getCopilotTerminals(this.props.sessionId, true);
-			const terminals = copilotTerminals.map((term) => {
+			const copilotTerminalIds = new Set(copilotTerminals.map(t => t.id));
+
+			// Create a unified list that includes all terminals
+			const terminals = allTerminals.map((term) => {
 				const lastCommand = this.terminalService.getLastCommandForTerminal(term);
+				// Use Copilot terminal data if available, otherwise create basic terminal info
+				const copilotTerminal = copilotTerminals.find(ct => ct.name === term.name);
 				return {
 					name: term.name,
 					lastCommand,
-					id: term.id,
+					id: copilotTerminal?.id || `terminal-${term.name}`,
+					isCopilotTerminal: copilotTerminalIds.has(copilotTerminal?.id || ''),
 				};
 			});
 
-			if (terminals.length === 0 && tasks.length === 0) {
-				return 'No tasks or Copilot terminals found.';
+			if (terminals.length === 0 && resultTasks.length === 0) {
+				return 'No tasks or terminals found.';
 			}
 
 			const renderTasks = () =>
@@ -92,7 +102,11 @@ export class TerminalAndTaskStatePromptElement extends PromptElement<TerminalAnd
 										Exit Code: {term.lastCommand.exitCode ?? '(unknown)'}<br />
 									</>
 								) : ''}
-								Output: {'{'}Use {ToolName.GetTerminalOutput} for terminal with ID: {term.id}.{'}'}<br />
+								{term.isCopilotTerminal ? (
+									<>Output: {'{'}Use {ToolName.GetTerminalOutput} for terminal with ID: {term.id}.{'}'}<br /></>
+								) : (
+									<>Output: Terminal output available via VS Code terminal commands.<br /></>
+								)}
 							</>
 						))}
 					</>
@@ -100,8 +114,8 @@ export class TerminalAndTaskStatePromptElement extends PromptElement<TerminalAnd
 
 			return (
 				<>
-					{tasks.length > 0 ? renderTasks() : 'Tasks: No tasks found.'}
-					{terminals.length > 0 ? renderTerminals() : 'Copilot Terminals: No active Copilot terminals found.'}
+					{resultTasks.length > 0 ? renderTasks() : 'Tasks: No tasks found.'}
+					{terminals.length > 0 ? renderTerminals() : 'Terminals: No active terminals found.'}
 				</>
 			);
 		}

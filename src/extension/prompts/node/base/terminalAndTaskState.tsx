@@ -93,7 +93,7 @@ export class TerminalAndTaskStatePromptElement extends PromptElement<TerminalAnd
 						Active Terminals:<br />
 						{terminals.map((term) => (
 							<>
-								Terminal: {term.name} {term.isCopilotTerminal ? '(created by Copilot)' : '(Created by User)'}<br />
+								Terminal: {term.name} {term.isCopilotTerminal ? '(Created by Copilot)' : '(Created by User)'}<br />
 								{term.lastCommand ? (
 									<>
 										Last Command: {term.lastCommand.commandLine ?? '(no last command)'}<br />

@@ -314,6 +314,15 @@ ${message}`,
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.stagedChanges', () => doReview(...instaService.invokeFunction(getServicesForReview), 'index', vscode.ProgressLocation.SourceControl)));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.unstagedChanges', () => doReview(...instaService.invokeFunction(getServicesForReview), 'workingTree', vscode.ProgressLocation.SourceControl)));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.changes', () => doReview(...instaService.invokeFunction(getServicesForReview), 'all', vscode.ProgressLocation.SourceControl)));
+	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.file', (resource?: vscode.SourceControlResourceState) => {
+		// For now, review the file in the context of all changes, but this could be enhanced
+		// to filter to just the specific file in the future
+		if (resource?.resourceUri) {
+			// Focus on the specific file by opening it first, then review all changes
+			vscode.window.showTextDocument(resource.resourceUri, { preview: false });
+		}
+		return doReview(...instaService.invokeFunction(getServicesForReview), 'all', vscode.ProgressLocation.SourceControl);
+	}));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.changes.cancel', () => cancelReview(vscode.ProgressLocation.SourceControl, accessor.get(IRunCommandExecutionService))));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.apply', doApplyReview));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.applyAndNext', (commentThread: vscode.CommentThread) => doApplyReview(commentThread, true)));

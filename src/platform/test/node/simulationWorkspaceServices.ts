@@ -799,17 +799,17 @@ export class TestingTerminalService extends Disposable implements ITerminalServi
 	}
 
 	getAllTerminals(): Promise<IKnownTerminal[]> {
-		const allTerminals: IKnownTerminal[] = [];
-		for (const [sessionId, terminals] of this.sessionTerminals) {
-			allTerminals.push(...terminals.map(t => ({ 
-				...t.terminal, 
-				id: t.id, 
-				isCopilotTerminal: true, 
-				sessionId,
-				isBackground: false 
-			})));
-		}
-		return Promise.resolve(allTerminals);
+		return Promise.resolve(
+			Array.from(this.sessionTerminals.entries()).flatMap(([sessionId, terminals]) =>
+				terminals.map(t => ({ 
+					...t.terminal, 
+					id: t.id, 
+					isCopilotTerminal: true, 
+					sessionId,
+					isBackground: false 
+				}))
+			)
+		);
 	}
 
 	getToolTerminalForSession(sessionId: string): Promise<{ terminal: vscode.Terminal; shellIntegrationQuality: ShellIntegrationQuality } | undefined> {

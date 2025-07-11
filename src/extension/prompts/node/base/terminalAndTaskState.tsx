@@ -45,24 +45,26 @@ export class TerminalAndTaskStatePromptElement extends PromptElement<TerminalAnd
 
 		if (this.terminalService && Array.isArray(this.terminalService.terminals)) {
 			const allTerminals = await this.terminalService.getAllTerminals();
-			const copilotTerminals = allTerminals.filter(terminal => {
-				if (!terminal.isCopilotTerminal) return false;
-				// Filter by session if specified
-				if (this.props.sessionId && terminal.sessionId !== this.props.sessionId) return false;
-				// Include background terminals (equivalent to includeBackground: true)
+			// Filter by session if specified for Copilot terminals only
+			const filteredTerminals = allTerminals.filter(terminal => {
+				// For Copilot terminals, filter by session if specified
+				if (terminal.isCopilotTerminal && this.props.sessionId && terminal.sessionId !== this.props.sessionId) {
+					return false;
+				}
 				return true;
 			});
-			const terminals = copilotTerminals.map((term) => {
+			const terminals = filteredTerminals.map((term) => {
 				const lastCommand = this.terminalService.getLastCommandForTerminal(term);
 				return {
 					name: term.name,
 					lastCommand,
 					id: term.id,
+					isCopilotTerminal: term.isCopilotTerminal || false,
 				};
 			});
 
 			if (terminals.length === 0 && tasks.length === 0) {
-				return 'No tasks or Copilot terminals found.';
+				return 'No tasks or terminals found.';
 			}
 
 			const renderTasks = () =>
@@ -91,7 +93,7 @@ export class TerminalAndTaskStatePromptElement extends PromptElement<TerminalAnd
 						Active Terminals:<br />
 						{terminals.map((term) => (
 							<>
-								Terminal: {term.name}<br />
+								Terminal: {term.name} {term.isCopilotTerminal ? '(Copilot)' : '(User)'}<br />
 								{term.lastCommand ? (
 									<>
 										Last Command: {term.lastCommand.commandLine ?? '(no last command)'}<br />
@@ -108,7 +110,7 @@ export class TerminalAndTaskStatePromptElement extends PromptElement<TerminalAnd
 			return (
 				<>
 					{tasks.length > 0 ? renderTasks() : 'Tasks: No tasks found.'}
-					{terminals.length > 0 ? renderTerminals() : 'Copilot Terminals: No active Copilot terminals found.'}
+					{terminals.length > 0 ? renderTerminals() : 'Terminals: No active terminals found.'}
 				</>
 			);
 		}

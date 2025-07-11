@@ -39,13 +39,13 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 	}
 
 	async getToolTerminalForSession(session_id: string): Promise<{ terminal: Terminal; sessionId: string; shellIntegrationQuality: ShellIntegrationQuality } | undefined> {
-		const storedTerminalAssociations: Record<number, { sessionId: string; shellIntegrationQuality: ShellIntegrationQuality; isBackground?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
+		const storedTerminalAssociations: Record<number, { sessionId: string; shellIntegrationQuality: ShellIntegrationQuality; isBackground?: boolean; isCopilotTerminal?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
 		for (const terminal of this.terminals) {
 			try {
 				const pid = await Promise.race([terminal.processId, timeout(5000)]);
 				if (typeof pid === 'number') {
 					const association = storedTerminalAssociations[pid];
-					if (association) {
+					if (association && association.isCopilotTerminal) {
 						const { sessionId, shellIntegrationQuality, isBackground } = association;
 						if (!isBackground && sessionId === session_id) {
 							return { terminal, shellIntegrationQuality, sessionId };
@@ -88,14 +88,15 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 		try {
 			const pid = await Promise.race([terminal.processId, timeout(5000)]);
 			if (typeof pid === 'number') {
-				const associations: Record<number, { shellIntegrationQuality: ShellIntegrationQuality; sessionId: string; id: string; isBackground?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
+				const associations: Record<number, { shellIntegrationQuality: ShellIntegrationQuality; sessionId: string; id: string; isBackground?: boolean; isCopilotTerminal: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
 				const existingAssociation = associations[pid] || {};
 				associations[pid] = {
 					...existingAssociation,
 					sessionId,
 					shellIntegrationQuality,
 					id,
-					isBackground
+					isBackground,
+					isCopilotTerminal: true
 				};
 
 				await this.extensionContext.workspaceState.update(TerminalSessionStorageKey, associations);
@@ -103,53 +104,70 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 		} catch { }
 	}
 
-	async getCopilotTerminals(sessionId: string, includeBackground?: boolean): Promise<IKnownTerminal[]> {
-
-		const terminals: IKnownTerminal[] = [];
-		const storedTerminalAssociations: Record<number, any> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
-
-		for (const terminal of this.terminals) {
+	async getCopilotTerminals(sessionId?: string, includeBackground?: boolean): Promise<IKnownTerminal[]> {
+		const allTerminals = await this.getAllTerminals();
+		const storedTerminalAssociations: Record<number, { sessionId?: string; shellIntegrationQuality?: ShellIntegrationQuality; id?: string; isBackground?: boolean; isCopilotTerminal?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
+		
+		const copilotTerminals: IKnownTerminal[] = [];
+		
+		for (const terminal of allTerminals) {
 			try {
 				const pid = await Promise.race([terminal.processId, timeout(5000)]);
 				if (typeof pid === 'number') {
 					const association = storedTerminalAssociations[pid];
-					if (association && typeof association === 'object' && (includeBackground || !association.isBackground) && association.sessionId === sessionId) {
-						terminals.push({ ...terminal, id: association.id });
+					if (association && association.isCopilotTerminal) {
+						// Filter by session if specified
+						if (sessionId && association.sessionId !== sessionId) {
+							continue;
+						}
+						// Filter by background flag if specified
+						if (!includeBackground && association.isBackground) {
+							continue;
+						}
+						copilotTerminals.push(terminal);
 					}
 				}
 			} catch { }
 		}
-		return terminals;
+		
+		return copilotTerminals;
 	}
 
 	async getAllTerminals(): Promise<IKnownTerminal[]> {
 		const terminals: IKnownTerminal[] = [];
-		const storedTerminalAssociations: Record<number, any> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
+		const storedTerminalAssociations: Record<number, { sessionId?: string; shellIntegrationQuality?: ShellIntegrationQuality; id?: string; isBackground?: boolean; isCopilotTerminal?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
 
+		// Track all terminals, ensuring they're stored in workspace state
 		for (const terminal of this.terminals) {
 			try {
 				const pid = await Promise.race([terminal.processId, timeout(5000)]);
 				if (typeof pid === 'number') {
-					const association = storedTerminalAssociations[pid];
-					if (association && typeof association === 'object') {
-						// This terminal has an association (Copilot-managed)
-						terminals.push({ ...terminal, id: association.id });
-					} else {
-						// This terminal doesn't have an association (user-created)
-						// Generate a unique ID for it based on its process ID
-						terminals.push({ ...terminal, id: `user-terminal-${pid}` });
+					let association = storedTerminalAssociations[pid];
+					if (!association) {
+						// This is a user-created terminal that hasn't been tracked yet
+						association = {
+							id: `user-terminal-${pid}`,
+							isCopilotTerminal: false
+						};
+						storedTerminalAssociations[pid] = association;
 					}
+					terminals.push({ ...terminal, id: association.id! });
 				}
 			} catch {
 				// If we can't get the process ID, still include the terminal with a fallback ID
-				terminals.push({ ...terminal, id: `terminal-${terminal.name || 'unknown'}-${Date.now()}` });
+				const fallbackId = `terminal-${terminal.name || 'unknown'}-${Date.now()}`;
+				terminals.push({ ...terminal, id: fallbackId });
 			}
 		}
+
+		// Update workspace state to include any newly tracked user terminals
+		await this.extensionContext.workspaceState.update(TerminalSessionStorageKey, storedTerminalAssociations);
+		
 		return terminals;
 	}
 
 	async removeTerminalAssociation(pid: number): Promise<void> {
-		const storedTerminalAssociations: Record<number, any> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
+		const storedTerminalAssociations: Record<number, { sessionId?: string; shellIntegrationQuality?: ShellIntegrationQuality; id?: string; isBackground?: boolean; isCopilotTerminal?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
 		for (const processId in storedTerminalAssociations) {
 			if (pid === Number(processId)) {
 				delete storedTerminalAssociations[processId];

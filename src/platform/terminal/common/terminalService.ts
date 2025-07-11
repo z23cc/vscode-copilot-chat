@@ -63,7 +63,7 @@ export interface ITerminalService {
 
 	/**
 	 * Gets non-background terminals associated with a specific session ID
-	 * If none is provided, the current session will be used.
+	 * If none is provided, all Copilot terminals will be returned.
 	 * @param sessionId The session ID to get terminals for
 	 * @param includeBackground Whether to include background terminals in the result
 	 * @returns Promise resolving to an array of terminals associated with the session
@@ -129,15 +129,11 @@ export class NullTerminalService extends Disposable implements ITerminalService 
 		return '';
 	}
 
-	async getCwdForSession(sessionId: string): Promise<vscode.Uri | undefined> {
+	async getCwdForSession(sessionId?: string): Promise<vscode.Uri | undefined> {
 		return Promise.resolve(undefined);
 	}
 
-	async getCopilotTerminals(sessionId: string): Promise<IKnownTerminal[]> {
-		return Promise.resolve([]);
-	}
-
-	async getAllTerminals(): Promise<IKnownTerminal[]> {
+	async getCopilotTerminals(sessionId?: string): Promise<IKnownTerminal[]> {
 		return Promise.resolve([]);
 	}
 

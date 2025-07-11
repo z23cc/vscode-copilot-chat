@@ -384,6 +384,7 @@ export const executeTestOnce = async (
 		testRunNumber: runNumber,
 		fetchRequestCollector: fetchRequestCollector,
 		isInRealExtensionHost,
+		outcomeDirectory,
 	};
 
 	const testingServiceCollection = await createSimulationAccessor(

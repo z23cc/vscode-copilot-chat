@@ -167,6 +167,8 @@ export interface CurrentTestRunInfo {
 	 * Whether we're working in a real workspace and extension host.
 	 */
 	isInRealExtensionHost: boolean;
+
+	outcomeDirectory: string; // Directory where the test outcome will be stored, if applicable.
 }
 
 export class RedisMemento implements Memento {

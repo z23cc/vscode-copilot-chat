@@ -799,7 +799,6 @@ export class TestingTerminalService extends Disposable implements ITerminalServi
 	}
 
 	getAllTerminals(): Promise<IKnownTerminal[]> {
-		// For simulation tests, return all terminals from all sessions
 		const allTerminals: IKnownTerminal[] = [];
 		for (const [sessionId, terminals] of this.sessionTerminals) {
 			allTerminals.push(...terminals.map(t => ({ 

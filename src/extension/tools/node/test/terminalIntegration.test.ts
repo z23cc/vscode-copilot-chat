@@ -22,22 +22,14 @@ suite('Terminal and Task State Integration', () => {
 			// Previous implementation didn't have getAllTerminals
 		};
 
-		// Simulate the new behavior - all terminals are tracked
+		// Simulate the new behavior - all terminals are tracked with property-based distinction
 		const newBehavior = {
-			getCopilotTerminals: () => [
-				{ id: 'copilot-terminal-1', name: 'Copilot Terminal' }
-			],
 			getAllTerminals: () => [
-				{ id: 'copilot-terminal-1', name: 'Copilot Terminal' },
-				{ id: 'user-terminal-123', name: 'User Terminal' },
-				{ id: 'user-terminal-456', name: 'PowerShell' }
+				{ id: 'copilot-terminal-1', name: 'Copilot Terminal', isCopilotTerminal: true },
+				{ id: 'user-terminal-123', name: 'User Terminal', isCopilotTerminal: false },
+				{ id: 'user-terminal-456', name: 'PowerShell', isCopilotTerminal: false }
 			]
 		};
-
-		// Verify that getCopilotTerminals still works as before (backwards compatibility)
-		const copilotTerminals = newBehavior.getCopilotTerminals();
-		strictEqual(copilotTerminals.length, 1);
-		strictEqual(copilotTerminals[0].name, 'Copilot Terminal');
 
 		// Verify that getAllTerminals now tracks all terminals (fixes the issue)
 		const allTerminals = newBehavior.getAllTerminals();
@@ -46,13 +38,21 @@ suite('Terminal and Task State Integration', () => {
 		// Should include the Copilot terminal
 		const copilotTerminal = allTerminals.find(t => t.id === 'copilot-terminal-1');
 		strictEqual(copilotTerminal?.name, 'Copilot Terminal');
+		strictEqual(copilotTerminal?.isCopilotTerminal, true);
 		
 		// Should include user-created terminals
 		const userTerminal1 = allTerminals.find(t => t.id === 'user-terminal-123');
 		strictEqual(userTerminal1?.name, 'User Terminal');
+		strictEqual(userTerminal1?.isCopilotTerminal, false);
 		
 		const userTerminal2 = allTerminals.find(t => t.id === 'user-terminal-456');
 		strictEqual(userTerminal2?.name, 'PowerShell');
+		strictEqual(userTerminal2?.isCopilotTerminal, false);
+
+		// Verify that Copilot terminals can be filtered from getAllTerminals
+		const copilotTerminals = allTerminals.filter(t => t.isCopilotTerminal);
+		strictEqual(copilotTerminals.length, 1);
+		strictEqual(copilotTerminals[0].name, 'Copilot Terminal');
 	});
 
 	test('GetAllTerminalsTool provides visibility into all terminals', async () => {

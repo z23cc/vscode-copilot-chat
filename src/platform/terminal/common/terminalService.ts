@@ -62,15 +62,6 @@ export interface ITerminalService {
 	associateTerminalWithSession(terminal: vscode.Terminal, sessionId: string, id: string, shellIntegrationQuality: ShellIntegrationQuality, isBackground?: boolean): Promise<void>;
 
 	/**
-	 * Gets non-background terminals associated with a specific session ID
-	 * If none is provided, all Copilot terminals will be returned.
-	 * @param sessionId The session ID to get terminals for
-	 * @param includeBackground Whether to include background terminals in the result
-	 * @returns Promise resolving to an array of terminals associated with the session
-	 */
-	getCopilotTerminals(sessionId?: string, includeBackground?: boolean): Promise<IKnownTerminal[]>;
-
-	/**
 	 * Gets all terminals currently available in the workspace.
 	 * This includes both Copilot-managed terminals and user-created terminals.
 	 * @returns Promise resolving to an array of all terminals
@@ -133,10 +124,6 @@ export class NullTerminalService extends Disposable implements ITerminalService 
 		return Promise.resolve(undefined);
 	}
 
-	async getCopilotTerminals(sessionId?: string): Promise<IKnownTerminal[]> {
-		return Promise.resolve([]);
-	}
-
 	async getAllTerminals(): Promise<IKnownTerminal[]> {
 		return Promise.resolve([]);
 	}
@@ -181,4 +168,7 @@ export function isNullTerminalService(thing: any): thing is NullTerminalService 
 
 export interface IKnownTerminal extends vscode.Terminal {
 	id: string;
+	isCopilotTerminal?: boolean;
+	sessionId?: string;
+	isBackground?: boolean;
 }

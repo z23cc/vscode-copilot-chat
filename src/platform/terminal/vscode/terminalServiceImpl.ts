@@ -104,35 +104,6 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 		} catch { }
 	}
 
-	async getCopilotTerminals(sessionId?: string, includeBackground?: boolean): Promise<IKnownTerminal[]> {
-		const allTerminals = await this.getAllTerminals();
-		const storedTerminalAssociations: Record<number, { sessionId?: string; shellIntegrationQuality?: ShellIntegrationQuality; id?: string; isBackground?: boolean; isCopilotTerminal?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
-		
-		const copilotTerminals: IKnownTerminal[] = [];
-		
-		for (const terminal of allTerminals) {
-			try {
-				const pid = await Promise.race([terminal.processId, timeout(5000)]);
-				if (typeof pid === 'number') {
-					const association = storedTerminalAssociations[pid];
-					if (association && association.isCopilotTerminal) {
-						// Filter by session if specified
-						if (sessionId && association.sessionId !== sessionId) {
-							continue;
-						}
-						// Filter by background flag if specified
-						if (!includeBackground && association.isBackground) {
-							continue;
-						}
-						copilotTerminals.push(terminal);
-					}
-				}
-			} catch { }
-		}
-		
-		return copilotTerminals;
-	}
-
 	async getAllTerminals(): Promise<IKnownTerminal[]> {
 		const terminals: IKnownTerminal[] = [];
 		const storedTerminalAssociations: Record<number, { sessionId?: string; shellIntegrationQuality?: ShellIntegrationQuality; id?: string; isBackground?: boolean; isCopilotTerminal?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
@@ -151,12 +122,23 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 						};
 						storedTerminalAssociations[pid] = association;
 					}
-					terminals.push({ ...terminal, id: association.id! });
+					terminals.push({ 
+						...terminal, 
+						id: association.id!, 
+						isCopilotTerminal: association.isCopilotTerminal || false,
+						sessionId: association.sessionId,
+						isBackground: association.isBackground || false
+					});
 				}
 			} catch {
 				// If we can't get the process ID, still include the terminal with a fallback ID
 				const fallbackId = `terminal-${terminal.name || 'unknown'}-${Date.now()}`;
-				terminals.push({ ...terminal, id: fallbackId });
+				terminals.push({ 
+					...terminal, 
+					id: fallbackId, 
+					isCopilotTerminal: false,
+					isBackground: false
+				});
 			}
 		}
 
@@ -177,18 +159,22 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 	}
 
 	async getCwdForSession(sessionId: string): Promise<Uri | undefined> {
-		const copilotTerminals = await this.getCopilotTerminals(sessionId);
+		const allTerminals = await this.getAllTerminals();
+		const sessionCopilotTerminals = allTerminals.filter(terminal => 
+			terminal.isCopilotTerminal && terminal.sessionId === sessionId
+		);
+		
 		const activeTerminal = window.activeTerminal;
 		if (activeTerminal) {
-			// Check if the active terminal is one we created
-			for (const terminal of copilotTerminals) {
+			// Check if the active terminal is one we created for this session
+			for (const terminal of sessionCopilotTerminals) {
 				if (terminal === activeTerminal) {
 					return terminal.shellIntegration?.cwd;
 				}
 			}
 		}
-		if (copilotTerminals.length === 1) {
-			return copilotTerminals[0]?.shellIntegration?.cwd;
+		if (sessionCopilotTerminals.length === 1) {
+			return sessionCopilotTerminals[0]?.shellIntegration?.cwd;
 		}
 	}
 

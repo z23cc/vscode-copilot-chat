@@ -798,23 +798,17 @@ export class TestingTerminalService extends Disposable implements ITerminalServi
 		return Promise.resolve();
 	}
 
-	getCopilotTerminals(sessionId?: string): Promise<IKnownTerminal[]> {
-		if (!sessionId) {
-			// Return all Copilot terminals from all sessions
-			const allTerminals: IKnownTerminal[] = [];
-			for (const [, terminals] of this.sessionTerminals) {
-				allTerminals.push(...terminals.map(t => ({ ...t.terminal, id: t.id })));
-			}
-			return Promise.resolve(allTerminals);
-		}
-		return Promise.resolve(this.sessionTerminals.get(sessionId)?.map(t => { return { ...t.terminal, id: t.id }; }) || []);
-	}
-
 	getAllTerminals(): Promise<IKnownTerminal[]> {
 		// For simulation tests, return all terminals from all sessions
 		const allTerminals: IKnownTerminal[] = [];
 		for (const [sessionId, terminals] of this.sessionTerminals) {
-			allTerminals.push(...terminals.map(t => ({ ...t.terminal, id: t.id })));
+			allTerminals.push(...terminals.map(t => ({ 
+				...t.terminal, 
+				id: t.id, 
+				isCopilotTerminal: true, 
+				sessionId,
+				isBackground: false 
+			})));
 		}
 		return Promise.resolve(allTerminals);
 	}

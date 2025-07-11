@@ -46,9 +46,9 @@ suite('TerminalAndTaskStatePromptElement', () => {
 			{ name: 'Terminal 1', id: '1' },
 			{ name: 'Terminal 2', id: '2' },
 		];
-		terminalService.getCopilotTerminals = async () => [
-			{ name: 'Terminal 1', id: '1' },
-			{ name: 'Terminal 2', id: '2' },
+		terminalService.getAllTerminals = async () => [
+			{ name: 'Terminal 1', id: '1', isCopilotTerminal: true },
+			{ name: 'Terminal 2', id: '2', isCopilotTerminal: true },
 		];
 		terminalService.getLastCommandForTerminal = (term: { id: string }) => {
 			if (term.id === '1') {
@@ -99,7 +99,7 @@ suite('TerminalAndTaskStatePromptElement', () => {
 			{ name: 'Terminal 1', id: '1' },
 			{ name: 'Terminal 2', id: '2' },
 		];
-		terminalService.getCopilotTerminals = async () => [];
+		terminalService.getAllTerminals = async () => [];
 		terminalService.getLastCommandForTerminal = (term: { id: string }) => {
 			if (term.id === '1') {
 				return { commandLine: 'npm run build', cwd: '/workspace', exitCode: 0 };
@@ -146,7 +146,7 @@ suite('TerminalAndTaskStatePromptElement', () => {
 			{ name: 'Terminal 1', id: '1' },
 			{ name: 'Terminal 2', id: '2' },
 		];
-		terminalService.getCopilotTerminals = async () => [];
+		terminalService.getAllTerminals = async () => [];
 		terminalService.getLastCommandForTerminal = (term: { id: string }) => {
 			if (term.id === '1') {
 				return { commandLine: 'npm run build', cwd: '/workspace', exitCode: 0 };
@@ -183,9 +183,9 @@ suite('TerminalAndTaskStatePromptElement', () => {
 			{ name: 'Terminal 1', id: '1' },
 			{ name: 'Terminal 2', id: '2' },
 		];
-		terminalService.getCopilotTerminals = async () => [
-			{ name: 'Terminal 1', id: '1' },
-			{ name: 'Terminal 2', id: '2' },
+		terminalService.getAllTerminals = async () => [
+			{ name: 'Terminal 1', id: '1', isCopilotTerminal: true },
+			{ name: 'Terminal 2', id: '2', isCopilotTerminal: true },
 		];
 		terminalService.getLastCommandForTerminal = (term: any) => {
 			if (term.id === '1') {
@@ -219,7 +219,7 @@ suite('TerminalAndTaskStatePromptElement', () => {
 			{ name: 'Terminal 1', id: '1' },
 			{ name: 'Terminal 2', id: '2' },
 		];
-		terminalService.getCopilotTerminals = async () => [];
+		terminalService.getAllTerminals = async () => [];
 		terminalService.getLastCommandForTerminal = (term: any) => {
 			return undefined;
 		};

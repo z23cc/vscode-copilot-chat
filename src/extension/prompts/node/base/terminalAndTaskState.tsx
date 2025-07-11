@@ -44,7 +44,14 @@ export class TerminalAndTaskStatePromptElement extends PromptElement<TerminalAnd
 		}
 
 		if (this.terminalService && Array.isArray(this.terminalService.terminals)) {
-			const copilotTerminals = await this.terminalService.getCopilotTerminals(this.props.sessionId, true);
+			const allTerminals = await this.terminalService.getAllTerminals();
+			const copilotTerminals = allTerminals.filter(terminal => {
+				if (!terminal.isCopilotTerminal) return false;
+				// Filter by session if specified
+				if (this.props.sessionId && terminal.sessionId !== this.props.sessionId) return false;
+				// Include background terminals (equivalent to includeBackground: true)
+				return true;
+			});
 			const terminals = copilotTerminals.map((term) => {
 				const lastCommand = this.terminalService.getLastCommandForTerminal(term);
 				return {

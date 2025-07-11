@@ -164,7 +164,7 @@ export class CompletionsCache implements ICompletionsCache {
 }
 
 export class CompletionsSQLiteCache extends SQLiteSlottedCache<CacheableCompletionRequest, ICacheableCompletionsResponse> implements ICompletionsCache {
-	constructor(info: CurrentTestRunInfo, salt: string) {
-		super(info, 'completions', salt);
+	constructor(salt: string, info: CurrentTestRunInfo) {
+		super('completions', salt, info);
 	}
 }

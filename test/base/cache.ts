@@ -269,7 +269,7 @@ export class SQLiteCache<TRequest extends CacheableRequest, TResponse> implement
 	private readonly namespace: string;
 	private readonly locks = new LockMap();
 
-	constructor(info: CurrentTestRunInfo, name: string, salt?: string) {
+	constructor(name: string, salt?: string, info?: CurrentTestRunInfo) {
 		this.namespace = `${name}${salt ? `|${salt}` : ''}`;
 	}
 
@@ -316,7 +316,7 @@ export class SQLiteSlottedCache<TRequest extends CacheableRequest, TResponse> im
 	private readonly namespace: string;
 	private readonly locks = new LockMap();
 
-	constructor(info: CurrentTestRunInfo, name: string, salt: string) {
+	constructor(name: string, salt: string, info?: CurrentTestRunInfo) {
 		this.namespace = `${name}|${salt}`;
 	}
 

@@ -59,7 +59,7 @@ export class TestModelMetadataFetcher extends ModelMetadataFetcher {
 
 	get isModelLab(): boolean { return this._isModelLab; }
 
-	private readonly cache: SQLiteCache<ModelMetadataRequest, IChatModelInformation[]> | undefined;
+	private readonly cache: SQLiteCache<ModelMetadataRequest, IChatModelInformation[]>;
 
 	constructor(
 		collectFetcherTelemetry: ((accessor: ServicesAccessor) => void) | undefined,
@@ -91,28 +91,22 @@ export class TestModelMetadataFetcher extends ModelMetadataFetcher {
 			_instantiationService
 		);
 
-		if (info) {
-			this.cache = new SQLiteCache<ModelMetadataRequest, IChatModelInformation[]>(info, 'modelMetadata', TestingCacheSalts.modelMetadata);
-		}
+		this.cache = new SQLiteCache<ModelMetadataRequest, IChatModelInformation[]>('modelMetadata', TestingCacheSalts.modelMetadata, info);
 	}
 
 	override async getAllChatModels(): Promise<IChatModelInformation[]> {
-		if (!this.cache) {
-			return await super.getAllChatModels();
-		}
-
 		const type = this._isModelLab ? 'modelLab' : 'prod';
 		const req = new ModelMetadataRequest(type);
 
 		return await TestModelMetadataFetcher.Queues.queue(type, async () => {
-			const result = await this.cache!.get(req);
+			const result = await this.cache.get(req);
 			if (result) {
 				return result;
 			}
 
 			// If the cache doesn't have the result, we need to fetch it
 			const modelInfo = await super.getAllChatModels();
-			await this.cache!.set(req, modelInfo);
+			await this.cache.set(req, modelInfo);
 			return modelInfo;
 		});
 	}

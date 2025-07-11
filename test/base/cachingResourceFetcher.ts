@@ -28,7 +28,7 @@ class Request<T> {
 
 class ResourceFetcherSQLiteCache<I, R> extends SQLiteCache<Request<I>, R> {
 	constructor(currentTestRunInfo: CurrentTestRunInfo) {
-		super(currentTestRunInfo, 'resource');
+		super('resource', undefined, currentTestRunInfo);
 	}
 }
 

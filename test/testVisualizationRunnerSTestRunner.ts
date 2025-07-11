@@ -39,7 +39,7 @@ export async function run(fullPath: string, testFullName: string) {
 	};
 	const simulationServicesOptions: SimulationServicesOptions = {
 		chatModelThrottlingTaskLaunchers: createSimulationChatModelThrottlingTaskLaunchers(false),
-		createChatMLCache: (info: CurrentTestRunInfo) => new ChatMLSQLiteCache(info, TestingCacheSalts.requestCacheSalt),
+		createChatMLCache: (info: CurrentTestRunInfo) => new ChatMLSQLiteCache(TestingCacheSalts.requestCacheSalt, info),
 		isNoFetchModeEnabled: false,
 		languageModelCacheMode: CacheMode.Default,
 		resourcesCacheMode: CacheMode.Default,

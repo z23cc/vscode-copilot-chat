@@ -59,7 +59,7 @@ interface ICacheEntry {
 }
 
 export class EmbeddingsSQLiteCache extends SQLiteCache<CacheableEmbeddingRequest, EmbeddingVector> implements IEmbeddingsCache {
-	constructor(currentTestRunInfo: CurrentTestRunInfo, salt: string) {
-		super(currentTestRunInfo, 'embeddings', salt);
+	constructor(salt: string, currentTestRunInfo: CurrentTestRunInfo) {
+		super('embeddings', salt, currentTestRunInfo);
 	}
 }

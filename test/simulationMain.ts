@@ -545,8 +545,8 @@ function createSimulationTestContext(
 		createChatMLCache = undefined;
 		createNesFetchCache = undefined;
 	} else {
-		createChatMLCache = (info: CurrentTestRunInfo) => new ChatMLSQLiteCache(info, TestingCacheSalts.requestCacheSalt);
-		createNesFetchCache = (info: CurrentTestRunInfo) => new CompletionsSQLiteCache(info, TestingCacheSalts.nesFetchCacheSalt);
+		createChatMLCache = (info: CurrentTestRunInfo) => new ChatMLSQLiteCache(TestingCacheSalts.requestCacheSalt, info);
+		createNesFetchCache = (info: CurrentTestRunInfo) => new CompletionsSQLiteCache(TestingCacheSalts.nesFetchCacheSalt, info);
 	}
 
 	const simulationServicesOptions: SimulationServicesOptions = {

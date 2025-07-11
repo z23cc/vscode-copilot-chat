@@ -140,8 +140,8 @@ export class ChunkingEndpointClientCache implements IChunkingEndpointClientCache
 
 export class ChunkingEndpointClientSQLiteCache extends SQLiteCache<CacheableChunkingEndpointClientRequest, FileChunkWithEmbedding[]> implements IChunkingEndpointClientCache {
 
-	constructor(currentTestRunInfo: CurrentTestRunInfo, salt: string) {
-		super(currentTestRunInfo, 'chunks-endpoint', salt);
+	constructor(salt: string, currentTestRunInfo: CurrentTestRunInfo) {
+		super('chunks-endpoint', salt, currentTestRunInfo);
 	}
 
 	override async get(req: CacheableChunkingEndpointClientRequest): Promise<FileChunkWithEmbedding[] | undefined> {

@@ -7,7 +7,7 @@ import { CacheableChatRequest, CachedResponse, IChatMLCache } from './cachingCha
 import { CurrentTestRunInfo } from './simulationContext';
 
 export class ChatMLSQLiteCache extends SQLiteSlottedCache<CacheableChatRequest, CachedResponse> implements IChatMLCache {
-	constructor(info: CurrentTestRunInfo, salt: string) {
-		super(info, 'request', salt);
+	constructor(salt: string, info: CurrentTestRunInfo) {
+		super('request', salt, info);
 	}
 }

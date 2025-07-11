@@ -80,8 +80,8 @@ export class CodeOrDocSearchCache implements ICodeOrDocSearchCache {
 
 export class CodeOrDocSearchSQLiteCache extends SQLiteCache<CacheableCodeOrDocSearchRequest, ICodeOrDocsSearchItem[] | ICodeOrDocsSearchResult> implements ICodeOrDocSearchCache {
 
-	constructor(currentTestRunInfo: CurrentTestRunInfo, salt: string) {
-		super(currentTestRunInfo, 'docs-search', salt);
+	constructor(salt: string, currentTestRunInfo: CurrentTestRunInfo) {
+		super('docs-search', salt, currentTestRunInfo);
 	}
 }
 

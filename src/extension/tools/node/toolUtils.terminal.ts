@@ -54,7 +54,7 @@ export class ToolTerminalCreator {
 
 		// The default profile has shell integration
 		if (ToolTerminalCreator._lastSuccessfulShell <= ShellLaunchType.Default) {
-			const shellIntegrationQuality = await this.waitForShellIntegration(terminal, 5000);
+			const shellIntegrationQuality = await waitForShellIntegration(terminal, 5000, this.terminalService);
 			if (token.isCancellationRequested) {
 				terminal.dispose();
 				throw new CancellationError();
@@ -85,56 +85,57 @@ export class ToolTerminalCreator {
 			},
 		});
 	}
+}
 
-	private waitForShellIntegration(
-		terminal: vscode.Terminal,
-		timeoutMs: number
-	): Promise<ShellIntegrationQuality> {
-		let shellIntegrationQuality: ShellIntegrationQuality = ShellIntegrationQuality.Basic;
+export function waitForShellIntegration(
+	terminal: vscode.Terminal,
+	timeoutMs: number,
+	terminalService: ITerminalService
+): Promise<ShellIntegrationQuality> {
+	let shellIntegrationQuality: ShellIntegrationQuality = ShellIntegrationQuality.Basic;
 
-		const dataFinished = new DeferredPromise<void>();
-		const dataListener = this.terminalService.onDidWriteTerminalData((e) => {
-			if (e.terminal === terminal) {
-				if (e.data.match(oscRegex('633;P;HasRichCommandDetection=True'))) {
-					shellIntegrationQuality = ShellIntegrationQuality.Rich;
-					dataFinished.complete();
+	const dataFinished = new DeferredPromise<void>();
+	const dataListener = terminalService.onDidWriteTerminalData((e) => {
+		if (e.terminal === terminal) {
+			if (e.data.match(oscRegex('633;P;HasRichCommandDetection=True'))) {
+				shellIntegrationQuality = ShellIntegrationQuality.Rich;
+				dataFinished.complete();
+			}
+		}
+	});
+
+	const deferred = new DeferredPromise<ShellIntegrationQuality>();
+	const timer = disposableTimeout(() => deferred.complete(ShellIntegrationQuality.None), timeoutMs);
+
+	if (terminal.shellIntegration) {
+		timer.dispose();
+		deferred.complete(shellIntegrationQuality);
+	} else {
+		const siListener = terminalService.onDidChangeTerminalShellIntegration((e) => {
+			if (e.terminal === terminal && e.terminal.shellIntegration) {
+				timer.dispose();
+				if (shellIntegrationQuality === ShellIntegrationQuality.Rich) {
+					deferred.complete(shellIntegrationQuality);
+				} else {
+					// While the rich command detection data should come in before
+					// `onDidChangeTerminalShellIntegration` fires, the data write event is
+					// debounced/buffered, so allow for up to 200ms for the data event to come
+					// up.
+					Promise.race([
+						dataFinished.p,
+						timeout(200)
+					]).then(() => deferred.complete(shellIntegrationQuality));
 				}
 			}
 		});
 
-		const deferred = new DeferredPromise<ShellIntegrationQuality>();
-		const timer = disposableTimeout(() => deferred.complete(ShellIntegrationQuality.None), timeoutMs);
-
-		if (terminal.shellIntegration) {
-			timer.dispose();
-			deferred.complete(shellIntegrationQuality);
-		} else {
-			const siListener = this.terminalService.onDidChangeTerminalShellIntegration((e) => {
-				if (e.terminal === terminal && e.terminal.shellIntegration) {
-					timer.dispose();
-					if (shellIntegrationQuality === ShellIntegrationQuality.Rich) {
-						deferred.complete(shellIntegrationQuality);
-					} else {
-						// While the rich command detection data should come in before
-						// `onDidChangeTerminalShellIntegration` fires, the data write event is
-						// debounced/buffered, so allow for up to 200ms for the data event to come
-						// up.
-						Promise.race([
-							dataFinished.p,
-							timeout(200)
-						]).then(() => deferred.complete(shellIntegrationQuality));
-					}
-				}
-			});
-
-			deferred.p.finally(() => {
-				siListener.dispose();
-				dataListener.dispose();
-			});
-		}
-
-		return deferred.p;
+		deferred.p.finally(() => {
+			siListener.dispose();
+			dataListener.dispose();
+		});
 	}
+
+	return deferred.p;
 }
 
 export interface ITerminalExecuteStrategy {

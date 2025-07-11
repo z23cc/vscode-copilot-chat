@@ -4,8 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Event, ExtensionTerminalOptions, Terminal, TerminalExecutedCommand, TerminalOptions, TerminalShellExecutionEndEvent, TerminalShellIntegrationChangeEvent, Uri, window, type TerminalDataWriteEvent } from 'vscode';
+import { waitForShellIntegration } from '../../../extension/tools/node/toolUtils.terminal';
 import { timeout } from '../../../util/vs/base/common/async';
 import { Disposable } from '../../../util/vs/base/common/lifecycle';
+import { generateUuid } from '../../../util/vs/base/common/uuid';
 import { IChatSessionService } from '../../chat/common/chatSessionService';
 import { IVSCodeExtensionContext } from '../../extContext/common/extensionContext';
 import { IKnownTerminal, ITerminalService, ShellIntegrationQuality } from '../common/terminalService';
@@ -35,6 +37,10 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 					this.removeTerminalAssociation(pid);
 				}
 			});
+		}));
+		this._register(this.onDidChangeTerminalShellIntegration(async e => {
+			const shellIntegrationQuality = await waitForShellIntegration(e.terminal, 5000, this);
+			this.storeTerminal(e.terminal, generateUuid(), shellIntegrationQuality);
 		}));
 	}
 
@@ -82,6 +88,21 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 	createTerminal(name?: any, shellPath?: any, shellArgs?: any): Terminal {
 		const terminal = window.createTerminal(name, shellPath, shellArgs);
 		return terminal;
+	}
+
+	async storeTerminal(terminal: Terminal, id: string, shellIntegrationQuality: ShellIntegrationQuality): Promise<void> {
+		const associations: Record<number, { shellIntegrationQuality: ShellIntegrationQuality; sessionId: string | undefined; id: string; isBackground?: boolean; isCopilotTerminal: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
+		const pid = await terminal.processId;
+		if (pid && associations[pid] === undefined) {
+			associations[pid] = {
+				shellIntegrationQuality,
+				sessionId: undefined,
+				id,
+				isBackground: false,
+				isCopilotTerminal: false
+			};
+			await this.extensionContext.workspaceState.update(TerminalSessionStorageKey, associations);
+		}
 	}
 
 	async associateTerminalWithSession(terminal: Terminal, sessionId: string, id: string, shellIntegrationQuality: ShellIntegrationQuality, isBackground?: boolean): Promise<void> {
@@ -134,14 +155,7 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 					});
 				}
 			} catch {
-				// If we can't get the process ID, still include the terminal with a fallback ID
-				const fallbackId = `terminal-${terminal.name || 'unknown'}-${Date.now()}`;
-				terminals.push({
-					...terminal,
-					id: fallbackId,
-					isCopilotTerminal: false,
-					isBackground: false
-				});
+
 			}
 		}
 

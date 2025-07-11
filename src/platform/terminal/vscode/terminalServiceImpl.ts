@@ -24,7 +24,7 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 			this._register(l);
 		}
 		this._register(chatSessionService.onDidDisposeChatSession?.(async sessionId => {
-			const copilotTerminals = await this.getCopilotTerminals(sessionId);
+			const copilotTerminals = await this.getAllTerminals(sessionId);
 			for (const terminal of copilotTerminals) {
 				terminal.dispose();
 			}
@@ -104,7 +104,7 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 		} catch { }
 	}
 
-	async getAllTerminals(): Promise<IKnownTerminal[]> {
+	async getAllTerminals(sessionId?: string): Promise<IKnownTerminal[]> {
 		const terminals: IKnownTerminal[] = [];
 		const storedTerminalAssociations: Record<number, { sessionId?: string; shellIntegrationQuality?: ShellIntegrationQuality; id?: string; isBackground?: boolean; isCopilotTerminal?: boolean }> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
 
@@ -122,9 +122,12 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 						};
 						storedTerminalAssociations[pid] = association;
 					}
-					terminals.push({ 
-						...terminal, 
-						id: association.id!, 
+					if (sessionId && !association.sessionId || association.sessionId !== sessionId) {
+						continue;
+					}
+					terminals.push({
+						...terminal,
+						id: association.id!,
 						isCopilotTerminal: association.isCopilotTerminal || false,
 						sessionId: association.sessionId,
 						isBackground: association.isBackground || false
@@ -133,9 +136,9 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 			} catch {
 				// If we can't get the process ID, still include the terminal with a fallback ID
 				const fallbackId = `terminal-${terminal.name || 'unknown'}-${Date.now()}`;
-				terminals.push({ 
-					...terminal, 
-					id: fallbackId, 
+				terminals.push({
+					...terminal,
+					id: fallbackId,
 					isCopilotTerminal: false,
 					isBackground: false
 				});
@@ -144,7 +147,7 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 
 		// Update workspace state to include any newly tracked user terminals
 		await this.extensionContext.workspaceState.update(TerminalSessionStorageKey, storedTerminalAssociations);
-		
+
 		return terminals;
 	}
 
@@ -160,10 +163,10 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 
 	async getCwdForSession(sessionId: string): Promise<Uri | undefined> {
 		const allTerminals = await this.getAllTerminals();
-		const sessionCopilotTerminals = allTerminals.filter(terminal => 
+		const sessionCopilotTerminals = allTerminals.filter(terminal =>
 			terminal.isCopilotTerminal && terminal.sessionId === sessionId
 		);
-		
+
 		const activeTerminal = window.activeTerminal;
 		if (activeTerminal) {
 			// Check if the active terminal is one we created for this session

@@ -802,6 +802,15 @@ export class TestingTerminalService extends Disposable implements ITerminalServi
 		return Promise.resolve(this.sessionTerminals.get(sessionId)?.map(t => { return { ...t.terminal, id: t.id }; }) || []);
 	}
 
+	getAllTerminals(): Promise<IKnownTerminal[]> {
+		// For simulation tests, return all terminals from all sessions
+		const allTerminals: IKnownTerminal[] = [];
+		for (const [sessionId, terminals] of this.sessionTerminals) {
+			allTerminals.push(...terminals.map(t => ({ ...t.terminal, id: t.id })));
+		}
+		return Promise.resolve(allTerminals);
+	}
+
 	getToolTerminalForSession(sessionId: string): Promise<{ terminal: vscode.Terminal; shellIntegrationQuality: ShellIntegrationQuality } | undefined> {
 		return Promise.resolve(this.sessionTerminals.get(sessionId)?.at(0));
 	}

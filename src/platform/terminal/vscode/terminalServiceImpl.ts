@@ -122,6 +122,32 @@ export class TerminalServiceImpl extends Disposable implements ITerminalService 
 		return terminals;
 	}
 
+	async getAllTerminals(): Promise<IKnownTerminal[]> {
+		const terminals: IKnownTerminal[] = [];
+		const storedTerminalAssociations: Record<number, any> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
+
+		for (const terminal of this.terminals) {
+			try {
+				const pid = await Promise.race([terminal.processId, timeout(5000)]);
+				if (typeof pid === 'number') {
+					const association = storedTerminalAssociations[pid];
+					if (association && typeof association === 'object') {
+						// This terminal has an association (Copilot-managed)
+						terminals.push({ ...terminal, id: association.id });
+					} else {
+						// This terminal doesn't have an association (user-created)
+						// Generate a unique ID for it based on its process ID
+						terminals.push({ ...terminal, id: `user-terminal-${pid}` });
+					}
+				}
+			} catch {
+				// If we can't get the process ID, still include the terminal with a fallback ID
+				terminals.push({ ...terminal, id: `terminal-${terminal.name || 'unknown'}-${Date.now()}` });
+			}
+		}
+		return terminals;
+	}
+
 	async removeTerminalAssociation(pid: number): Promise<void> {
 		const storedTerminalAssociations: Record<number, any> = this.extensionContext.workspaceState.get(TerminalSessionStorageKey, {});
 		for (const processId in storedTerminalAssociations) {

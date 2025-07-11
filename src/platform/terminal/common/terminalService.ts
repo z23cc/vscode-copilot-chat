@@ -71,6 +71,13 @@ export interface ITerminalService {
 	getCopilotTerminals(sessionId?: string, includeBackground?: boolean): Promise<IKnownTerminal[]>;
 
 	/**
+	 * Gets all terminals currently available in the workspace.
+	 * This includes both Copilot-managed terminals and user-created terminals.
+	 * @returns Promise resolving to an array of all terminals
+	 */
+	getAllTerminals(): Promise<IKnownTerminal[]>;
+
+	/**
 	 * Gets the buffer for a terminal.
 	 * @param maxChars The maximum number of chars to return from the buffer, defaults to 16k
 	 */
@@ -127,6 +134,14 @@ export class NullTerminalService extends Disposable implements ITerminalService 
 	}
 
 	async getCopilotTerminals(sessionId: string): Promise<IKnownTerminal[]> {
+		return Promise.resolve([]);
+	}
+
+	async getAllTerminals(): Promise<IKnownTerminal[]> {
+		return Promise.resolve([]);
+	}
+
+	async getAllTerminals(): Promise<IKnownTerminal[]> {
 		return Promise.resolve([]);
 	}
 

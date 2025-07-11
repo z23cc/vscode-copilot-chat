@@ -106,9 +106,8 @@ export async function doReview(
 			inProgress.cancel();
 		}
 		const tokenSource = inProgress = new CancellationTokenSource(cancellationToken ? combineCancellationTokens(cancellationToken, progressToken) : progressToken);
-		if (progressLocation === ProgressLocation.SourceControl) {
-			await commandService.executeCommand('setContext', scmProgressKey, true);
-		}
+		// Set context variable for any review progress to enable cancel button
+		await commandService.executeCommand('setContext', scmProgressKey, true);
 		reviewService.removeReviewComments(reviewService.getReviewComments());
 		const progress: Progress<ReviewComment[]> = {
 			report: comments => {
@@ -129,9 +128,8 @@ export async function doReview(
 				inProgress = undefined;
 			}
 			tokenSource.dispose();
-			if (progressLocation === ProgressLocation.SourceControl) {
-				await commandService.executeCommand('setContext', scmProgressKey, undefined);
-			}
+			// Clear context variable for any review progress
+			await commandService.executeCommand('setContext', scmProgressKey, undefined);
 		}
 		if (tokenSource.token.isCancellationRequested) {
 			return { type: 'cancelled' };
@@ -164,9 +162,8 @@ export async function cancelReview(progressLocation: ProgressLocation, commandSe
 	if (inProgress) {
 		inProgress.cancel();
 	}
-	if (progressLocation === ProgressLocation.SourceControl) {
-		await commandService.executeCommand('setContext', scmProgressKey, undefined);
-	}
+	// Clear context variable for any review progress
+	await commandService.executeCommand('setContext', scmProgressKey, undefined);
 }
 
 async function review(

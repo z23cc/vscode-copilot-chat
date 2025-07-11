@@ -321,7 +321,7 @@ ${message}`,
 			// Focus on the specific file by opening it first, then review all changes
 			vscode.window.showTextDocument(resource.resourceUri, { preview: false });
 		}
-		return doReview(...instaService.invokeFunction(getServicesForReview), 'all', vscode.ProgressLocation.SourceControl);
+		return doReview(...instaService.invokeFunction(getServicesForReview), 'all', vscode.ProgressLocation.Notification);
 	}));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.changes.cancel', () => cancelReview(vscode.ProgressLocation.SourceControl, accessor.get(IRunCommandExecutionService))));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.apply', doApplyReview));

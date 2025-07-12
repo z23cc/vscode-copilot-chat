@@ -18,6 +18,7 @@ import { ITelemetryService, multiplexProperties } from '../../../platform/teleme
 import { IWorkspaceService } from '../../../platform/workspace/common/workspaceService';
 import { ChatResponseStreamImpl } from '../../../util/common/chatResponseStreamImpl';
 import { removeLeadingFilepathComment } from '../../../util/common/markdown';
+import { timeout } from '../../../util/vs/base/common/async';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
 import { ChatResponseTextEditPart, LanguageModelPromptTsxPart, LanguageModelToolResult, WorkspaceEdit } from '../../../vscodeTypes';
 import { IBuildPromptContext } from '../../prompt/common/intents';
@@ -31,7 +32,6 @@ import { EditFileResult } from './editFileToolResult';
 import { EditError, NoMatchError, applyEdit } from './editFileToolUtils';
 import { sendEditNotebookTelemetry } from './editNotebookTool';
 import { assertFileOkForTool, resolveToolInputPath } from './toolUtils';
-import { timeout } from '../../../util/vs/base/common/async';
 
 export interface IReplaceStringToolParams {
 	explanation: string;
@@ -185,11 +185,13 @@ export class ReplaceStringTool implements ICopilotTool<IReplaceStringToolParams>
 				let outcome: string;
 
 				if (error instanceof NoMatchError) {
-					outcome = options.input.oldString.includes('{…}') ?
-						'oldStringHasSummarizationMarker' :
-						options.input.oldString.includes('/*...*/') ?
-							'oldStringHasSummarizationMarkerSemanticSearch' :
-							error.kindForTelemetry;
+					outcome = options.input.oldString.match(/Lines \d+-\d+ omitted/) ?
+						'oldStringHasOmittedLines' :
+						options.input.oldString.includes('{…}') ?
+							'oldStringHasSummarizationMarker' :
+							options.input.oldString.includes('/*...*/') ?
+								'oldStringHasSummarizationMarkerSemanticSearch' :
+								error.kindForTelemetry;
 					errorMessage += `${error.message}`;
 				} else if (error instanceof EditError) {
 					outcome = error.kindForTelemetry;

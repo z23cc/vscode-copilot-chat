@@ -946,7 +946,7 @@
 						},
 						"oldString": {
 							"type": "string",
-							"description": "The string to be replaced in the file. Never use ...existing code... comments in the oldString."
+							"description": "The string to be replaced in the file. Never use 'Lines 123-456 omitted' comments from summarized documents or ...existing code... comments in the oldString."
 						},
 						"newString": {
 							"type": "string",

@@ -311,10 +311,10 @@ ${message}`,
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.explain', doExplain));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.explain.palette', () => doExplain(undefined, true)));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review', () => doReview(...instaService.invokeFunction(getServicesForReview), 'selection', vscode.ProgressLocation.Notification)));
-	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.stagedChanges', () => doReview(...instaService.invokeFunction(getServicesForReview), 'index', vscode.ProgressLocation.SourceControl)));
-	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.unstagedChanges', () => doReview(...instaService.invokeFunction(getServicesForReview), 'workingTree', vscode.ProgressLocation.SourceControl)));
-	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.changes', () => doReview(...instaService.invokeFunction(getServicesForReview), 'all', vscode.ProgressLocation.SourceControl)));
-	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.changes.cancel', () => cancelReview(vscode.ProgressLocation.SourceControl, accessor.get(IRunCommandExecutionService))));
+	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.stagedChanges', () => doReview(...instaService.invokeFunction(getServicesForReview), 'index', vscode.ProgressLocation.Notification)));
+	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.unstagedChanges', () => doReview(...instaService.invokeFunction(getServicesForReview), 'workingTree', vscode.ProgressLocation.Notification)));
+	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.changes', () => doReview(...instaService.invokeFunction(getServicesForReview), 'all', vscode.ProgressLocation.Notification)));
+	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.changes.cancel', () => cancelReview(vscode.ProgressLocation.Notification, accessor.get(IRunCommandExecutionService))));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.apply', doApplyReview));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.applyAndNext', (commentThread: vscode.CommentThread) => doApplyReview(commentThread, true)));
 	disposables.add(vscode.commands.registerCommand('github.copilot.chat.review.applyShort', (commentThread: vscode.CommentThread) => doApplyReview(commentThread, true)));

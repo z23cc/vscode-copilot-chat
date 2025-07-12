@@ -106,7 +106,9 @@ export async function doReview(
 			inProgress.cancel();
 		}
 		const tokenSource = inProgress = new CancellationTokenSource(cancellationToken ? combineCancellationTokens(cancellationToken, progressToken) : progressToken);
-		if (progressLocation === ProgressLocation.SourceControl) {
+		// Set SCM progress context for staged/unstaged changes to enable cancel buttons in SCM panel
+		const isScmReview = group === 'index' || group === 'workingTree' || group === 'all';
+		if (progressLocation === ProgressLocation.SourceControl || isScmReview) {
 			await commandService.executeCommand('setContext', scmProgressKey, true);
 		}
 		reviewService.removeReviewComments(reviewService.getReviewComments());
@@ -129,7 +131,8 @@ export async function doReview(
 				inProgress = undefined;
 			}
 			tokenSource.dispose();
-			if (progressLocation === ProgressLocation.SourceControl) {
+			// Clear SCM progress context for any SCM-related reviews
+			if (progressLocation === ProgressLocation.SourceControl || isScmReview) {
 				await commandService.executeCommand('setContext', scmProgressKey, undefined);
 			}
 		}
@@ -164,9 +167,9 @@ export async function cancelReview(progressLocation: ProgressLocation, commandSe
 	if (inProgress) {
 		inProgress.cancel();
 	}
-	if (progressLocation === ProgressLocation.SourceControl) {
-		await commandService.executeCommand('setContext', scmProgressKey, undefined);
-	}
+	// Always clear SCM progress context when cancelling, regardless of progress location
+	// since we set it for all SCM-related reviews (staged, unstaged, all changes)
+	await commandService.executeCommand('setContext', scmProgressKey, undefined);
 }
 
 async function review(

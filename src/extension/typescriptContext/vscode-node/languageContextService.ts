@@ -409,6 +409,11 @@ class TelemetrySender {
 		this.logService.logger.info(`TypeScript Copilot context speculative request: [${context.requestId} - ${originalRequestId}, numberOfItems: ${numberOfItems}]`);
 	}
 
+	public willLogRequestTelemetry(context: RequestContext): boolean {
+		const sampleTelemetry = Math.max(1, Math.min(100, context.sampleTelemetry ?? 1));
+		return sampleTelemetry === 1 || this.sendRequestTelemetryCounter % sampleTelemetry === 0;
+	}
+
 	public sendRequestTelemetry(document: vscode.TextDocument, context: RequestContext, data: ContextItemSummary, timeTaken: number, cacheState: { before: CacheState; after: CacheState } | undefined): void {
 		const meta = data.meta;
 		const snippetStats = data.snippetStats;
@@ -1451,6 +1456,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 		}
 		this.onTimeOut = { requestId: context.requestId, items: cachedItems?.clientOnTimeout };
 
+		const willLogRequestTelemetry = this.telemetrySender.willLogRequestTelemetry(context);
 		const args: ComputeContextRequestArgs = {
 			file: document.uri,
 			line: position.line + 1,
@@ -1461,7 +1467,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 			neighborFiles: neighborFiles.length > 0 ? neighborFiles : undefined,
 			knownContextItems: cachedItems?.server,
 			computationStates: this.itemManager.getComputationStates(document),
-			$traceId: context.requestId
+			$traceId: willLogRequestTelemetry ? context.requestId : undefined
 		};
 		try {
 			if (this.inflightCancellationToken !== undefined) {

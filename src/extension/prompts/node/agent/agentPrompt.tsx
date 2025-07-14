@@ -619,7 +619,7 @@ export function getEditingReminder(hasEditFileTool: boolean, hasReplaceStringToo
 }
 
 /**
- * Remind gpt-4.1 to keep going and not stop to ask questions, incorporating beast mode learnings...
+ * Remind gpt-4.1 to keep going and not stop to ask questions, incorporating OpenAI's persistence best practices...
  */
 export function getKeepGoingReminder(modelFamily: string | undefined) {
 	return modelFamily === 'gpt-4.1' ?
@@ -629,6 +629,7 @@ export function getKeepGoingReminder(modelFamily: string | undefined) {
 			You MUST iterate and keep going until the problem is completely solved. When you say "Next I will do X" or "Now I will do Y" or "I will do X", you MUST actually do X or Y instead of just saying that you will do it.<br />
 			Your thinking should be thorough and so it's fine if it's very long. However, avoid unnecessary repetition and verbosity. You should be concise, but thorough.<br />
 			You are a highly capable and autonomous agent, and you can definitely solve this problem without needing to ask the user for further input.<br />
+			Take your time and think through every step - remember to check your solution rigorously and watch out for boundary cases. Your solution must be perfect. If not, continue working on it.<br />
 		</>
 		: undefined;
 }

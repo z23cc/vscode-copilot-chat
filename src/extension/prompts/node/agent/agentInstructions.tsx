@@ -78,9 +78,7 @@ export class GPT41AgentPrompt extends PromptElement<DefaultAgentPromptProps> {
 				<br />
 				**3. Develop a Detailed Plan**<br />
 				- Outline a specific, simple, and verifiable sequence of steps to fix the problem<br />
-				- Create a todo list in markdown format to track your progress<br />
-				- Each time you complete a step, check it off using `[x]` syntax<br />
-				- Each time you check off a step, display the updated todo list to the user<br />
+				- Use the todo list format described in the base instructions to track your progress<br />
 				- Make sure that you ACTUALLY continue on to the next step after checking off a step instead of ending your turn and asking the user what they want to do next<br />
 				<br />
 				**4. Making Code Changes**<br />
@@ -101,16 +99,6 @@ export class GPT41AgentPrompt extends PromptElement<DefaultAgentPromptProps> {
 				- Test frequently after each change to verify correctness<br />
 				- Run tests after each change to verify correctness<br />
 				- Iterate until the root cause is fixed and all tests pass<br />
-				<br />
-				**How to create a Todo List:**<br />
-				Use the following format to create a todo list:<br />
-				```markdown<br />
-				- [ ] Step 1: Description of the first step<br />
-				- [ ] Step 2: Description of the second step<br />
-				- [ ] Step 3: Description of the third step<br />
-				```<br />
-				<br />
-				Do not ever use HTML tags or any other formatting for the todo list, as it will not be rendered correctly. Always use the markdown format shown above.<br />
 			</Tag>
 			<Tag name='communicationGuidelines'>
 				Always communicate clearly and concisely in a casual, friendly yet professional tone.<br />
@@ -426,7 +414,23 @@ export class DefaultAgentPrompt extends PromptElement<DefaultAgentPromptProps> {
 				Don't repeat yourself after a tool call, pick up where you left off.<br />
 				{!this.props.codesearchMode && hasSomeEditTool && <>NEVER print out a codeblock with file changes unless the user asked for it. Use the appropriate edit tool instead.<br /></>}
 				{hasTerminalTool && <>NEVER print out a codeblock with a terminal command to run unless the user asked for it. Use the {ToolName.RunInTerminal} tool instead.<br /></>}
-				You don't need to read a file if it's already provided in context.
+				You don't need to read a file if it's already provided in context.<br />
+				<br />
+				**For complex multi-step tasks:**<br />
+				- Create a todo list in markdown format to track your progress<br />
+				- Each time you complete a step, check it off using `[x]` syntax<br />
+				- Each time you check off a step, display the updated todo list to the user<br />
+				- Make sure that you continue on to the next step after checking off a step<br />
+				<br />
+				**How to create a Todo List:**<br />
+				Use the following format to create a todo list:<br />
+				```markdown<br />
+				- [ ] Step 1: Description of the first step<br />
+				- [ ] Step 2: Description of the second step<br />
+				- [ ] Step 3: Description of the third step<br />
+				```<br />
+				<br />
+				Do not ever use HTML tags or any other formatting for the todo list, as it will not be rendered correctly. Always use the markdown format shown above.<br />
 			</Tag>
 			<Tag name='toolUseInstructions'>
 				If the user is requesting a code sample, you can answer it directly without using any tools.<br />

@@ -44,7 +44,7 @@ import { TerminalCwdPrompt } from '../panel/terminalPrompt';
 import { ChatToolCalls } from '../panel/toolCalling';
 import { MultirootWorkspaceStructure } from '../panel/workspace/workspaceStructure';
 import { AgentConversationHistory } from './agentConversationHistory';
-import { DefaultAgentPrompt, SweBenchAgentPrompt } from './agentInstructions';
+import { DefaultAgentPrompt, SweBenchAgentPrompt, GPT41AgentPrompt } from './agentInstructions';
 import { SummarizedConversationHistory } from './summarizedConversationHistory';
 
 export interface AgentPromptProps extends GenericBasePromptElementProps {
@@ -83,11 +83,17 @@ export class AgentPrompt extends PromptElement<AgentPromptProps> {
 	async render(state: void, sizing: PromptSizing) {
 		const instructions = this.configurationService.getConfig(ConfigKey.Internal.SweBenchAgentPrompt) ?
 			<SweBenchAgentPrompt availableTools={this.props.promptContext.tools?.availableTools} modelFamily={this.props.endpoint.family} codesearchMode={undefined} /> :
-			<DefaultAgentPrompt
-				availableTools={this.props.promptContext.tools?.availableTools}
-				modelFamily={this.props.endpoint.family}
-				codesearchMode={this.props.codesearchMode}
-			/>;
+			this.props.endpoint.family === 'gpt-4.1' ?
+				<GPT41AgentPrompt
+					availableTools={this.props.promptContext.tools?.availableTools}
+					modelFamily={this.props.endpoint.family}
+					codesearchMode={this.props.codesearchMode}
+				/> :
+				<DefaultAgentPrompt
+					availableTools={this.props.promptContext.tools?.availableTools}
+					modelFamily={this.props.endpoint.family}
+					codesearchMode={this.props.codesearchMode}
+				/>;
 
 		const baseInstructions = <>
 			<SystemMessage>
@@ -286,6 +292,9 @@ export class AgentUserMessage extends PromptElement<AgentUserMessageProps> {
 						{/* Critical reminders that are effective when repeated right next to the user message */}
 						{getKeepGoingReminder(this.props.endpoint.family)}
 						{getEditingReminder(hasEditFileTool, hasReplaceStringTool)}
+						{this.props.endpoint.family === 'gpt-4.1' && this.props.request.toLowerCase().match(/\b(resume|continue|try again)\b/) && <>
+							I understand you want me to continue from where I left off. Let me check the previous conversation history to see what the next incomplete step is and continue from that step. I will not hand back control to the user until the entire task is complete and all items are checked off.<br />
+						</>}
 						<NotebookReminderInstructions chatVariables={this.props.chatVariables} query={this.props.request} />
 					</Tag>
 					{query && <Tag name='userRequest' priority={900} flexGrow={7}>{query + attachmentHint}</Tag>}
@@ -610,13 +619,16 @@ export function getEditingReminder(hasEditFileTool: boolean, hasReplaceStringToo
 }
 
 /**
- * Remind gpt-4.1 to keep going and not stop to ask questions...
+ * Remind gpt-4.1 to keep going and not stop to ask questions, incorporating beast mode learnings...
  */
 export function getKeepGoingReminder(modelFamily: string | undefined) {
 	return modelFamily === 'gpt-4.1' ?
 		<>
 			You are an agent - you must keep going until the user's query is completely resolved, before ending your turn and yielding back to the user. ONLY terminate your turn when you are sure that the problem is solved, or you absolutely cannot continue.<br />
 			You take action when possible- the user is expecting YOU to take action and go to work for them. Don't ask unnecessary questions about the details if you can simply DO something useful instead.<br />
+			You MUST iterate and keep going until the problem is completely solved. When you say "Next I will do X" or "Now I will do Y" or "I will do X", you MUST actually do X or Y instead of just saying that you will do it.<br />
+			Your thinking should be thorough and so it's fine if it's very long. However, avoid unnecessary repetition and verbosity. You should be concise, but thorough.<br />
+			You are a highly capable and autonomous agent, and you can definitely solve this problem without needing to ask the user for further input.<br />
 		</>
 		: undefined;
 }

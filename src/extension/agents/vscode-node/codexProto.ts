@@ -3,24 +3,18 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { spawn } from 'child_process';
-import * as fs from 'fs';
+import { ChildProcessWithoutNullStreams, execSync, spawn } from 'child_process';
+import { IFileSystemService } from '../../../platform/filesystem/common/fileSystemService';
 import { ILogService } from '../../../platform/log/common/logService';
 import { Emitter, Event } from '../../../util/vs/base/common/event';
 import { Disposable } from '../../../util/vs/base/common/lifecycle';
+import { removeAnsiEscapeCodes } from '../../../util/vs/base/common/strings';
+import { URI } from '../../../util/vs/base/common/uri';
 import { LanguageModelServer } from './langModelServer';
 
-// taken from https://github.com/microsoft/vscode/blob/499fb52ae8c985485e6503669f3711ee0d6f31dc/src/vs/base/common/strings.ts#L731
-function removeAnsiEscapeCodes(str: string): string {
-	const CSI_SEQUENCE = /(:?\x1b\[|\x9B)[=?>!]?[\d;:]*["$#'* ]?[a-zA-Z@^`{}|~]/g;
-	if (str) {
-		str = str.replace(CSI_SEQUENCE, '');
-	}
-	return str;
-}
-
-type ChildProcess = any;
-
+/*
+ * See codex-rs/core/src/protocol.rs and codex-rs/docs/protocol_v1.md
+ */
 // Submission Queue types
 interface Submission {
 	id: string;
@@ -253,7 +247,7 @@ type FileChange =
  * Manages communication with the Codex process via stdin/stdout
  */
 export class CodexClient extends Disposable {
-	private _proc: ChildProcess | undefined;
+	private _proc: ChildProcessWithoutNullStreams | undefined;
 	private _nextSubmissionId = 1;
 
 	// Single event emitter for all Codex events
@@ -281,7 +275,8 @@ export class CodexClient extends Disposable {
 	 */
 
 	constructor(
-		@ILogService private readonly logService: ILogService
+		@ILogService private readonly logService: ILogService,
+		@IFileSystemService private readonly fileSystemService: IFileSystemService
 	) {
 		super();
 	}
@@ -294,29 +289,10 @@ export class CodexClient extends Disposable {
 			throw new Error('Codex process already started');
 		}
 
-		// const target = 'codex';
-		const target = '/Users/roblou/code/codex/codex-rs/target/debug/codex';
-		this.logService.logger.info(`Spawning Codex: ${target}`);
-		this._proc = spawn(target, ['proto'], {
-			stdio: ['pipe', 'pipe', 'pipe'],
-			env: {
-				...process.env,
-				RUST_LOG: 'trace',
-				// CODEX_HOME: '/tmp/codex'
-			},
-			cwd: '/Users/roblou/code/debugtest'
-		});
-
-		this._proc.stdout?.setEncoding('utf8');
-		this._proc.stdout?.on('data', (data: string) => this._handleProcessOutput(data));
-		this._proc.stderr?.on('data', (data: Buffer) => {
-			this.logService.logger.info(`Codex stderr: ${removeAnsiEscapeCodes(data.toString())}`);
-		});
-
-		this._proc.on('exit', (code: any) => {
-			console.log('codex proto exited with code', code);
-			this._proc = undefined;
-		});
+		const target = 'codex';
+		// const target = '/Users/roblou/code/codex/codex-rs/target/debug/codex';
+		const codexHome = '/tmp/vscode-codex';
+		await this.fileSystemService.createDirectory(URI.file(codexHome));
 
 		const lmServer = new LanguageModelServer();
 		await lmServer.start();
@@ -331,7 +307,33 @@ name = "CAPI"
 base_url = "http://localhost:${lmServerConfig.port}/v1"
 http_headers = { "X-Nonce" = "vscode-nonce" }
 wire_api = "chat"`.trim();
-		fs.writeFileSync('/Users/roblou/.codex/config.toml', config);
+		await this.fileSystemService.writeFile(URI.file(`${codexHome}/config.toml`), Buffer.from(config));
+
+		this.logService.logger.info(`Spawning Codex: ${target}`);
+
+		// Verify codex version is >= 0.6.0
+		await this.assertCodexGoodVersion();
+
+		this._proc = spawn(target, ['proto'], {
+			stdio: ['pipe', 'pipe', 'pipe'],
+			env: {
+				...process.env,
+				RUST_LOG: 'trace',
+				CODEX_HOME: codexHome
+			},
+			cwd
+		});
+
+		this._proc.stdout?.setEncoding('utf8');
+		this._proc.stdout?.on('data', (data: string) => this._handleProcessOutput(data));
+		this._proc.stderr?.on('data', (data: Buffer) => {
+			this.logService.logger.info(`Codex stderr: ${removeAnsiEscapeCodes(data.toString())}`);
+		});
+
+		this._proc.on('exit', (code: any) => {
+			console.log('codex proto exited with code', code);
+			this._proc = undefined;
+		});
 
 		// Configure session
 		await this._sendSubmission({
@@ -351,13 +353,39 @@ wire_api = "chat"`.trim();
 			model_reasoning_summary: 'none',
 			approval_policy: AskForApproval.Untrusted,
 			sandbox_policy: { mode: 'workspace-write' },
-			cwd: '/Users/roblou/code/debugtest'
+			cwd
 		});
 		// await this._sendSubmission({
 		// 	type: 'configure_session',
 		// 	cwd,
 		// 	approval_policy: AskForApproval.Never,
 		// });
+	}
+
+	private async assertCodexGoodVersion(): Promise<void> {
+		try {
+			const result = execSync('codex --version', { encoding: 'utf8' });
+			const output = removeAnsiEscapeCodes(result.toString()).trim();
+
+			// Earlier versions don't support http_headers in config file, we need this.
+			// Need native cli, which includes codex-cli in version output.
+			const versionMatch = output.match(/codex-cli\s+(\d+)\.(\d+)\.(\d+)/);
+			if (!versionMatch) {
+				throw new Error(`Unexpected codex version output: ${output}`);
+			}
+
+			const [, major, minor, patch] = versionMatch.map(Number);
+			const version = { major, minor, patch };
+
+			if (version.major > 0 || (version.major === 0 && version.minor >= 6)) {
+				this.logService.logger.info(`Codex version check passed: ${output}`);
+			} else {
+				throw new Error(`Codex version ${major}.${minor}.${patch} is too old. Required: >= 0.6.0`);
+			}
+		} catch (error) {
+			this.logService.logger.error(`Codex version check failed: ${error}`);
+			throw new Error(`Failed to verify codex version: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 
 	/**

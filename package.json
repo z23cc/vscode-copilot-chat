@@ -1782,7 +1782,8 @@
 				"modes": [
 					"agent"
 				],
-				"isEngine": true
+				"isEngine": true,
+				"isSticky": true
 			}
 		],
 		"languageModels": [

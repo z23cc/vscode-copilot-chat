@@ -3,26 +3,57 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
+import { ILogService } from '../../../platform/log/common/logService';
+import { IWorkspaceService } from '../../../platform/workspace/common/workspaceService';
 import { DeferredPromise } from '../../../util/vs/base/common/async';
 import { Event } from '../../../util/vs/base/common/event';
+import { Disposable, DisposableMap } from '../../../util/vs/base/common/lifecycle';
+import { generateUuid } from '../../../util/vs/base/common/uuid';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
-import { CodexClient } from './proto';
-import { IToolsService } from '../../tools/common/toolsService';
 import { ToolName } from '../../tools/common/toolNames';
-import { ILogService } from '../../../platform/log/common/logService';
+import { IToolsService } from '../../tools/common/toolsService';
+import { CodexClient } from './codexProto';
 
-export class CodexAgentManager {
+export class CodexAgentManager extends Disposable {
+	// TODO Need to have sessionId on ChatRequest to use onDidDisposeChatSession to clean up Codex clients
+	private _codexClients = this._register(new DisposableMap<string, CodexClient>());
+
 	constructor(
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IToolsService private readonly toolsService: IToolsService,
-		@ILogService private readonly logService: ILogService
-	) { }
+		@ILogService private readonly logService: ILogService,
+		@IWorkspaceService private readonly workspaceService: IWorkspaceService
+	) {
+		super();
+	}
 
 	public async handleRequest(request: vscode.ChatRequest, context: vscode.ChatContext, progress: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<vscode.ChatResult> {
-		const codexClient = this.instantiationService.createInstance(CodexClient);
-		const responseDoneDeferred = new DeferredPromise();
+		const lastEntry = context.history.at(-1);
+		const historySessionId: string = lastEntry instanceof vscode.ChatResponseTurn ? lastEntry.result.metadata?.codexSessionId : undefined;
 
+		let codexClient: CodexClient | undefined;
+		if (historySessionId) {
+			codexClient = this._codexClients.get(historySessionId);
+			if (!codexClient) {
+				this.logService.logger.warn(`No Codex client found for session ID: ${historySessionId}`);
+			}
+		}
+
+		const sessionId = historySessionId || generateUuid();
+		if (!codexClient) {
+			this.logService.logger.info(`Starting new Codex client for session ID: ${sessionId}`);
+			codexClient = this.instantiationService.createInstance(CodexClient);
+			this._codexClients.set(sessionId, codexClient);
+
+			const configuredP = Event.toPromise(Event.filter(codexClient.onEvent, e => e.msg.type === 'session_configured'));
+			// Start Codex if not already started
+			const cwd = this.workspaceService.getWorkspaceFolders().at(0)?.fsPath;
+			await codexClient.start(cwd || '');
+			await configuredP;
+		}
+
+		const responseDoneDeferred = new DeferredPromise();
 		try {
 			// Set up event handling
 			const eventListener = codexClient.onEvent(async event => {
@@ -114,17 +145,13 @@ export class CodexAgentManager {
 				eventListener.dispose();
 			});
 
-			const configuredP = Event.toPromise(Event.filter(codexClient.onEvent, e => e.msg.type === 'session_configured'));
-
-			// Start Codex if not already started
-			await codexClient.start('/Users/roblou/code/vscode-copilot2');
-			await configuredP;
-
 			// Send the user's message to Codex
 			await codexClient.sendUserInput(request.prompt);
 
 			await responseDoneDeferred.p;
-			return {};
+			return {
+				metadata: { codexSessionId: sessionId },
+			};
 		} catch (error) {
 			progress.markdown(`❌ **Failed to start Codex:** ${error}`);
 			return {};

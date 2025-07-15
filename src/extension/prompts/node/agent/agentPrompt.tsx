@@ -44,7 +44,7 @@ import { TerminalCwdPrompt } from '../panel/terminalPrompt';
 import { ChatToolCalls } from '../panel/toolCalling';
 import { MultirootWorkspaceStructure } from '../panel/workspace/workspaceStructure';
 import { AgentConversationHistory } from './agentConversationHistory';
-import { DefaultAgentPrompt, SweBenchAgentPrompt, GPT41AgentPrompt } from './agentInstructions';
+import { DefaultAgentPrompt, GPT41AgentPrompt, SweBenchAgentPrompt } from './agentInstructions';
 import { SummarizedConversationHistory } from './summarizedConversationHistory';
 
 export interface AgentPromptProps extends GenericBasePromptElementProps {

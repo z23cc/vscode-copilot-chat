@@ -228,7 +228,7 @@ class TreeRunnableResult {
 			id = id.substring(1); // Remove leading underscore for display purposes
 		}
 		const cacheInfo = this.from.cache !== undefined ? 1 : 0;
-		let label = `${id} - ${this.items.length} items`;
+		let label = `${id} - ${this.items.length} items - ${this.from.state}`;
 		if (this.parent.summary.serverComputed?.has(this.from.id)) {
 			label += ' - ⏳';
 		}
@@ -395,6 +395,8 @@ class TreeContextRequest {
 		this.label = `${label} - ${timeString} - [${this.position.line + 1}:${this.position.character + 1}]`;
 		if (this.summary.serverComputed && this.summary.serverComputed.size > 0) {
 			this.label += ` - ⏳ ${this.summary.totalTime}ms`;
+		} else {
+			this.label += ` - ${this.summary.totalTime}ms`;
 		}
 	}
 

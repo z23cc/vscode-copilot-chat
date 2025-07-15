@@ -176,6 +176,7 @@ class ChatAgents implements IDisposable {
 		const editingAgent = this.createAgent(editingSessionAgentName, Intent.Edit);
 		editingAgent.iconPath = new vscode.ThemeIcon('copilot');
 		editingAgent.additionalWelcomeMessage = this.additionalWelcomeMessage;
+		editingAgent.titleProvider = this.instantiationService.createInstance(ChatTitleProvider);
 		return editingAgent;
 	}
 
@@ -190,6 +191,7 @@ class ChatAgents implements IDisposable {
 		const editingAgent = this.createAgent(editingSessionAgent2Name, Intent.Edit2);
 		editingAgent.iconPath = new vscode.ThemeIcon('copilot');
 		editingAgent.additionalWelcomeMessage = this.additionalWelcomeMessage;
+		editingAgent.titleProvider = this.instantiationService.createInstance(ChatTitleProvider);
 		return editingAgent;
 	}
 
@@ -197,6 +199,7 @@ class ChatAgents implements IDisposable {
 		const editingAgent = this.createAgent(editsAgentName, Intent.Agent);
 		editingAgent.iconPath = new vscode.ThemeIcon('tools');
 		editingAgent.additionalWelcomeMessage = this.additionalWelcomeMessage;
+		editingAgent.titleProvider = this.instantiationService.createInstance(ChatTitleProvider);
 		return editingAgent;
 	}
 

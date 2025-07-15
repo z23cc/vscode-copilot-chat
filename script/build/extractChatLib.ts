@@ -286,7 +286,11 @@ class ChatLibExtractor {
 				'_internal/**/*.ts',
 				'README.md',
 				'LICENSE.txt'
-			]
+			],
+			scripts: {
+				build: 'echo "TBD: Build step not defined"',
+				test: 'echo "TBD: Test step not defined"'
+			}
 		};
 
 		await fs.promises.writeFile(

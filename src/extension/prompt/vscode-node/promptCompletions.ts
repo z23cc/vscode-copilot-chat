@@ -26,15 +26,6 @@ export class PromptCompletionContribution extends Disposable {
 					if (!position.isEqual(endPosition)) {
 						return Promise.resolve([]);
 					}
-					let previousHistory = '';
-					if ('requests' in context && context.requests instanceof Array && context.requests.length > 0 && typeof context.requests[0] === 'string') {
-						context.requests.forEach((request, index) => {
-							if (index < 5) {
-								previousHistory += `*${request}`;
-								previousHistory += '\n';
-							}
-						});
-					}
 					const prompt = [
 						`Imagine yourself to be a software engineer who is writing prompts to an LLM within a code editor to assist them with their work. The LLM is capable of generating, explaining, fixing code and generally doing programming related tasks. Imagine the software engineer has written an incomplete prompt. Your task is to complete the prompt, if necessary and if you have enough information, to send to the LLM.`,
 						`Let me give you an example of a completion to a prompt. Suppose the engineer's incomplete prompt was:`,
@@ -58,14 +49,6 @@ export class PromptCompletionContribution extends Disposable {
 						`- You DON'T always have to output a prompt completion if you think the prompt is ALREADY complete or if you don't have ENOUGH information. It is better to hold off on a completion than to give an incorrect one. In that case, just output an empty string.`,
 						``,
 					];
-					if (previousHistory) {
-						prompt.push(...[
-							`Before sending you the incomplete prompt of the engineer, I will give you the OTHER prompts that the engineer has written in the past. The prompt completion HAS to be related to the previous prompts. Think about what the next logic prompt completion should be. The previous prompts are as follows and are each prefixed with a star (*):`,
-							``,
-							`${previousHistory}`,
-							``,
-						]);
-					}
 					if (text) {
 						prompt.push(...[
 							`I will now give the incomplete prompt which the engineer has already written:`,
@@ -75,17 +58,10 @@ export class PromptCompletionContribution extends Disposable {
 							`Given the above incomplete prompt, please provide a completion to the above prompt OR an empty string if you think a prompt completion is not necessary OR if you don't have ENOUGH information to infer a prompt completion. Do NOT include in your answer the incomplete prompt itself, just provide the completion that will be APPENDED at the end of the prompt.`,
 						]);
 					} else {
-						if (previousHistory) {
-							prompt.push(...[
-								``,
-								`The software engineer has not written the beginning of a prompt yet. Look at the previous prompt history and output the next most logical prompt.`
-							]);
-						} else {
-							prompt.push(...[
-								``,
-								`The software engineer has not written the beginning of a prompt yet. There is not prompt history either. Please provide a random full programming related prompt.`
-							]);
-						}
+						prompt.push(...[
+							``,
+							`The software engineer has not written the beginning of a prompt yet. There is not prompt history either. Please provide a random full programming related prompt.`
+						]);
 					}
 					const messages: Raw.ChatMessage[] = [{
 						role: Raw.ChatRole.Assistant,

@@ -212,6 +212,12 @@ namespace TypeScriptServerError {
 	}
 }
 
+namespace RequestContext {
+	export function getSampleTelemetry(context: RequestContext): number {
+		return Math.max(1, Math.min(100, context.sampleTelemetry ?? 1));
+	}
+}
+
 class TelemetrySender {
 
 	private readonly telemetryService: ITelemetryService;
@@ -227,7 +233,7 @@ class TelemetrySender {
 	}
 
 	public sendSpeculativeRequestTelemetry(context: RequestContext, originalRequestId: string, numberOfItems: number): void {
-		const sampleTelemetry = Math.max(1, Math.min(100, context.sampleTelemetry ?? 1));
+		const sampleTelemetry = RequestContext.getSampleTelemetry(context);
 		const shouldSendTelemetry = sampleTelemetry === 1 || this.sendSpeculativeRequestTelemetryCounter % sampleTelemetry === 0;
 		this.sendSpeculativeRequestTelemetryCounter++;
 
@@ -259,6 +265,11 @@ class TelemetrySender {
 		this.logService.logger.debug(`TypeScript Copilot context speculative request: [${context.requestId} - ${originalRequestId}, numberOfItems: ${numberOfItems}]`);
 	}
 
+	public willLogRequestTelemetry(context: RequestContext): boolean {
+		const sampleTelemetry = RequestContext.getSampleTelemetry(context);
+		return sampleTelemetry === 1 || this.sendRequestTelemetryCounter % sampleTelemetry === 0;
+	}
+
 	public sendRequestTelemetry(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, data: ContextItemSummary, timeTaken: number, cacheState: { before: CacheState; after: CacheState } | undefined): void {
 		const stats = data.stats;
 		const nodePath = data?.path ? JSON.stringify(data.path) : JSON.stringify([0]);
@@ -266,7 +277,7 @@ class TelemetrySender {
 		const totalSize = stats.totalSize;
 		const fileSize = document.getText().length;
 
-		const sampleTelemetry = Math.max(1, Math.min(100, context.sampleTelemetry ?? 1));
+		const sampleTelemetry = RequestContext.getSampleTelemetry(context);
 		const shouldSendTelemetry = sampleTelemetry === 1 || this.sendRequestTelemetryCounter % sampleTelemetry === 0;
 		this.sendRequestTelemetryCounter++;
 		if (shouldSendTelemetry) {
@@ -713,7 +724,7 @@ class RunnableResultManager implements vscode.Disposable {
 		this.withInRangeRunnableResults.length = 0;
 		this.outsideRangeRunnableResults.length = 0;
 		this.neighborFileRunnableResults.length = 0;
-		this.results = new Map();
+		this.results.clear();
 		this.cacheInfo = {
 			version: version,
 			state: CacheState.NotPopulated
@@ -731,7 +742,7 @@ class RunnableResultManager implements vscode.Disposable {
 			path: body.path ?? [0]
 		};
 
-		if (body.runnableResults === undefined || body.runnableResults.length === 0) {
+		if (body.runnableResults === undefined || body.runnableResults.length === 0 || body.path === undefined || body.path.length === 0 || body.path[0] === 0) {
 			return { resolved: [], cached: cachedItems, referenced: referencedItems, serverComputed: serverComputed };
 		}
 
@@ -854,7 +865,7 @@ class RunnableResultManager implements vscode.Disposable {
 		if (this.requestInfo?.document !== document.uri.toString()) {
 			return undefined;
 		}
-		if (this.cacheInfo.version !== document.version) {
+		if (this.cacheInfo.version !== document.version || this.cacheInfo.state === CacheState.NotPopulated || this.requestInfo.path.length === 0 || this.requestInfo.path[0] === 0) {
 			this.clear();
 			return undefined;
 		}
@@ -1125,8 +1136,7 @@ enum CancellationState {
 class DelayedCancellationToken implements vscode.CancellationToken {
 
 	private readonly token: vscode.CancellationToken;
-	private readonly cacheState: CacheState;
-	private readonly cachePopulationTimeout: number;
+	private readonly isCacheRequest: boolean;
 	private readonly cancelThreshold: number;
 
 	private cancellationState: CancellationState;
@@ -1135,17 +1145,17 @@ class DelayedCancellationToken implements vscode.CancellationToken {
 	private readonly emitter: vscode.EventEmitter<any>;
 	private readonly eventDisposable: vscode.Disposable;
 
-	constructor(token: vscode.CancellationToken, startTime: number, timeBudget: number, cacheState: CacheState, cachePopulationTimeout: number) {
+	constructor(token: vscode.CancellationToken, startTime: number, timeBudget: number, cachePopulationTimeout?: number) {
 		this.token = token;
-		this.cacheState = cacheState;
-		this.cachePopulationTimeout = cachePopulationTimeout < 0 ? 0 : cachePopulationTimeout;
+		cachePopulationTimeout = cachePopulationTimeout !== undefined ? (cachePopulationTimeout < 0 ? 0 : cachePopulationTimeout) : undefined;
 
 		// Keep on running if we have only 20 ms left. The server will auto cancel the request.
-		if (cacheState === CacheState.FullyPopulated) {
+		if (cachePopulationTimeout === undefined) {
 			this.cancelThreshold = Math.max(0, startTime + timeBudget - 20);
 		} else {
-			this.cancelThreshold = Math.max(startTime + this.cachePopulationTimeout, startTime + timeBudget - 20);
+			this.cancelThreshold = Math.max(startTime + cachePopulationTimeout, startTime + timeBudget - 20);
 		}
+		this.isCacheRequest = cachePopulationTimeout !== undefined;
 		this.cancellationState = timeBudget > 0 ? CancellationState.Delay : CancellationState.PassThrough;
 
 		this.cancellationEvent = undefined;
@@ -1206,7 +1216,7 @@ class DelayedCancellationToken implements vscode.CancellationToken {
 		// If the cache is not populated, we don't want to cancel and keep the
 		// request running until the time budget is exhausted. This is to ensure that
 		// the request can be cached correctly.
-		if (this.cacheState === CacheState.NotPopulated) {
+		if (this.isCacheRequest) {
 			return false;
 		}
 		return Date.now() < this.cancelThreshold;
@@ -1225,7 +1235,7 @@ type ComputeContextRequestArgs = {
 	$traceId?: string;
 };
 namespace ComputeContextRequestArgs {
-	export function create(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, startTime: number, timeBudget: number, neighborFiles: readonly string[] | undefined, clientSideRunnableResults: readonly protocol.CachedContextRunnableResult[] | undefined): ComputeContextRequestArgs {
+	export function create(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, startTime: number, timeBudget: number, willLogRequestTelemetry: boolean, neighborFiles: readonly string[] | undefined, clientSideRunnableResults: readonly protocol.CachedContextRunnableResult[] | undefined): ComputeContextRequestArgs {
 		return {
 			file: vscode.Uri.file(document.fileName),
 			line: position.line + 1,
@@ -1235,10 +1245,62 @@ namespace ComputeContextRequestArgs {
 			tokenBudget: context.tokenBudget ?? 7 * 1024,
 			neighborFiles: neighborFiles !== undefined && neighborFiles.length > 0 ? neighborFiles : undefined,
 			clientSideRunnableResults: clientSideRunnableResults,
-			$traceId: context.requestId
+			$traceId: willLogRequestTelemetry ? context.requestId : undefined
 		};
 	}
 }
+
+abstract class InflightRequestInfo {
+
+	public readonly document: string;
+	public readonly position: vscode.Position;
+	public readonly requestId: string;
+	public readonly source: KnownSources | string;
+	public readonly serverPromise: Thenable<protocol.ComputeContextResponse>;
+
+	constructor(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, serverPromise: Thenable<protocol.ComputeContextResponse>) {
+		this.document = document.uri.toString();
+		this.position = position;
+		this.requestId = context.requestId;
+		this.source = context.source ?? KnownSources.unknown;
+		this.serverPromise = serverPromise;
+	}
+
+	public matches(document: vscode.TextDocument, position: vscode.Position): boolean {
+		return this.document === document.uri.toString() && this.position.isEqual(position);
+	}
+
+	public abstract cancel(): void;
+}
+
+class InflightComputeRequest extends InflightRequestInfo {
+
+	private readonly cancellationToken: DelayedCancellationToken;
+
+	constructor(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, cancellationToken: DelayedCancellationToken, serverPromise: Thenable<protocol.ComputeContextResponse>) {
+		super(document, position, context, serverPromise);
+		this.cancellationToken = cancellationToken;
+	}
+
+	public cancel(): void {
+		this.cancellationToken.flushOutstandingCancellation();
+	}
+}
+
+class InflightCacheRequest extends InflightRequestInfo {
+
+	private readonly tokenSource: vscode.CancellationTokenSource;
+
+	constructor(document: vscode.TextDocument, position: vscode.Position, context: RequestContext, tokenSource: vscode.CancellationTokenSource, serverPromise: Thenable<protocol.ComputeContextResponse>) {
+		super(document, position, context, serverPromise);
+		this.tokenSource = tokenSource;
+	}
+
+	public cancel(): void {
+		this.tokenSource.cancel();
+	}
+}
+
 
 export class LanguageContextServiceImpl implements ILanguageContextService, vscode.Disposable {
 
@@ -1253,7 +1315,8 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 	private readonly runnableResultManager: RunnableResultManager;
 	private readonly neighborFileModel: NeighborFileModel;
 
-	private inflightCancellationToken: DelayedCancellationToken | undefined;
+
+	private inflightRequest: InflightRequestInfo | undefined;
 	private onTimeOut: { requestId: string; results: readonly ResolvedRunnableResult[] | undefined; contextItemResult: ContextItemResultBuilder; itemMap: Map<protocol.ContextItemKey, protocol.ContextItem> } | undefined;
 	private readonly cachePopulationTimeout: number;
 
@@ -1277,7 +1340,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 		this.telemetrySender = new TelemetrySender(telemetryService, logService);
 		this.runnableResultManager = new RunnableResultManager();
 		this.neighborFileModel = new NeighborFileModel();
-		this.inflightCancellationToken = undefined;
+		this.inflightRequest = undefined;
 		this.onTimeOut = undefined;
 		this.cachePopulationTimeout = this.getCachePopulationTimeout();
 
@@ -1295,7 +1358,7 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 	public dispose(): void {
 		this.runnableResultManager.dispose();
 		this.neighborFileModel.dispose();
-		this.inflightCancellationToken = undefined;
+		this.inflightRequest = undefined;
 	}
 
 	async isActivated(documentOrLanguageId: vscode.TextDocument | string): Promise<boolean> {
@@ -1348,8 +1411,8 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 		if (document.languageId !== 'typescript' && document.languageId !== 'typescriptreact') {
 			return;
 		}
-		if (this.inflightCancellationToken !== undefined) {
-			// We have a normal request running. Do not issue a cache request.
+		if (this.inflightRequest !== undefined) {
+			// We have a request running. Do not issue a cache request.
 			return;
 		}
 		const startTime = Date.now();
@@ -1360,22 +1423,29 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 		}
 		const neighborFiles: string[] = this.neighborFileModel.getNeighborFiles(document);
 		const timeBudget = this.cachePopulationTimeout;
-		const args: ComputeContextRequestArgs = ComputeContextRequestArgs.create(document, position, context, startTime, timeBudget, neighborFiles, contextRequestState?.server);
+		const willLogRequestTelemetry = this.telemetrySender.willLogRequestTelemetry(context);
+		const args: ComputeContextRequestArgs = ComputeContextRequestArgs.create(document, position, context, startTime, timeBudget, willLogRequestTelemetry, neighborFiles, contextRequestState?.server);
 		try {
 			const isDebugging = this.isDebugging;
 			const forDebugging: ContextItem[] | undefined = isDebugging ? [] : undefined;
 			const tokenSource = new vscode.CancellationTokenSource();
 			const token = tokenSource.token;
 			const documentVersion = document.version;
-			const start = Date.now();
 			const cacheState = this.runnableResultManager.getCacheState();
 			let response: protocol.ComputeContextResponse;
+			let inflightRequest: InflightRequestInfo | undefined = undefined;
 			try {
-				response = await vscode.commands.executeCommand('typescript.tsserverRequest', '_.copilot.context', args, LanguageContextServiceImpl.ExecConfig, token);
+				const promise: Thenable<protocol.ComputeContextResponse> = vscode.commands.executeCommand('typescript.tsserverRequest', '_.copilot.context', args, LanguageContextServiceImpl.ExecConfig, token);
+				inflightRequest = new InflightCacheRequest(document, position, context, tokenSource, promise);
+				this.inflightRequest = inflightRequest;
+				response = await promise;
 			} finally {
+				if (this.inflightRequest === inflightRequest) {
+					this.inflightRequest = undefined;
+				}
 				tokenSource.dispose();
 			}
-			const timeTaken = Date.now() - start;
+			const timeTaken = Date.now() - startTime;
 			if (protocol.ComputeContextResponse.isCancelled(response)) {
 				this.telemetrySender.sendRequestCancelledTelemetry(context);
 				return;
@@ -1401,9 +1471,10 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 				return;
 			} else if (protocol.ComputeContextResponse.isError(response)) {
 				this.telemetrySender.sendRequestFailureTelemetry(context, response.body);
-				console.error('Error computing context:', response.body.message, response.body.stack);
+				console.error('Error populating cache:', response.body.message, response.body.stack);
 			}
 		} catch (error) {
+			this.logService.logger.error(error, `Error populating cache for document: ${document.uri.toString()} at position: ${position.line + 1}:${position.character + 1}`);
 		}
 	}
 
@@ -1411,6 +1482,14 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 		if (document.languageId !== 'typescript' && document.languageId !== 'typescriptreact') {
 			return;
 		}
+
+		if (this.inflightRequest !== undefined && this.inflightRequest.matches(document, position)) {
+			// We have an inflight request for the same document and position.
+			// We wait for the server promise to resolve and then see if we can yield items from the
+			// inflight request.
+			await this.inflightRequest.serverPromise;
+		}
+
 		const isDebugging = this.isDebugging;
 		const forDebugging: ContextItem[] | undefined = isDebugging ? [] : undefined;
 		const startTime = Date.now();
@@ -1450,22 +1529,27 @@ export class LanguageContextServiceImpl implements ILanguageContextService, vsco
 			}
 		}
 
-		const args: ComputeContextRequestArgs = ComputeContextRequestArgs.create(document, position, context, startTime, timeBudget, neighborFiles, contextRequestState?.server);
+		const willLogRequestTelemetry = this.telemetrySender.willLogRequestTelemetry(context);
+		const args: ComputeContextRequestArgs = ComputeContextRequestArgs.create(document, position, context, startTime, timeBudget, willLogRequestTelemetry, neighborFiles, contextRequestState?.server);
 		try {
-			if (this.inflightCancellationToken !== undefined) {
-				this.inflightCancellationToken.flushOutstandingCancellation();
+			if (this.inflightRequest !== undefined) {
+				// We have an inflight request. Cancel it.
+				this.inflightRequest.cancel();
 			}
 			const cacheState = this.runnableResultManager.getCacheState();
-			const delayedCancellationToken = new DelayedCancellationToken(token, startTime, timeBudget, cacheState, this.cachePopulationTimeout);
+			const delayedCancellationToken = new DelayedCancellationToken(token, startTime, timeBudget, context.source === KnownSources.populateCache ? this.cachePopulationTimeout : undefined);
 			const documentVersion = document.version;
-			this.inflightCancellationToken = delayedCancellationToken;
+			let inflightRequest: InflightRequestInfo | undefined = undefined;
 			const start = Date.now();
 			let response: protocol.ComputeContextResponse;
 			try {
-				response = await vscode.commands.executeCommand('typescript.tsserverRequest', '_.copilot.context', args, LanguageContextServiceImpl.ExecConfig, delayedCancellationToken);
+				const promise: Thenable<protocol.ComputeContextResponse> = vscode.commands.executeCommand('typescript.tsserverRequest', '_.copilot.context', args, LanguageContextServiceImpl.ExecConfig, delayedCancellationToken);
+				inflightRequest = new InflightComputeRequest(document, position, context, delayedCancellationToken, promise);
+				this.inflightRequest = inflightRequest;
+				response = await promise;
 			} finally {
-				if (this.inflightCancellationToken === delayedCancellationToken) {
-					this.inflightCancellationToken = undefined;
+				if (this.inflightRequest === inflightRequest) {
+					this.inflightRequest = undefined;
 				}
 				delayedCancellationToken.clear();
 			}

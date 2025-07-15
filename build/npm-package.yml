@@ -43,7 +43,8 @@ extends:
           - script: cd .. && npm run extract-chat-lib
           - script: npm ci
           - script: npm test
-        ${{ if or(eq(parameters.nextVersion, 'prerelease'), and(in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))) }}:
+        # ${{ if or(eq(parameters.nextVersion, 'prerelease'), and(in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))) }}:
+        ${{ if eq(parameters.nextVersion, 'prerelease') }}:
           publishPackage: true
           publishRequiresApproval: false
           nextVersion: prerelease

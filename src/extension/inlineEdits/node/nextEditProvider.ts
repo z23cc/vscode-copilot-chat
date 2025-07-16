@@ -41,7 +41,7 @@ import { CachedOrRebasedEdit, NextEditCache } from './nextEditCache';
 import { LlmNESTelemetryBuilder } from './nextEditProviderTelemetry';
 import { INextEditResult, NextEditResult } from './nextEditResult';
 
-const ARTIFICIAL_CACHE_HIT_DELAY = 300; // delay cache hits by 300ms to make it more like a regular request and to reduce flicker ;)
+
 
 export interface INextEditProvider<T extends INextEditResult, TTelemetry, TData = void> extends IDisposable {
 	readonly ID: string;
@@ -173,7 +173,8 @@ export class NextEditProvider extends Disposable implements INextEditProvider<Ne
 			// back-date the recording bookmark of the cached edit to the bookmark of the original request.
 			logContext.recordingBookmark = req.log.recordingBookmark;
 
-			await timeout(ARTIFICIAL_CACHE_HIT_DELAY);
+			const cacheDelay = this._configService.getExperimentBasedConfig(ConfigKey.Internal.InlineEditsCacheDelay, this._expService);
+			await timeout(cacheDelay);
 
 		} else if (cachedEdit) {
 			tracer.trace('using cached edit');
@@ -187,7 +188,8 @@ export class NextEditProvider extends Disposable implements INextEditProvider<Ne
 			// back-date the recording bookmark of the cached edit to the bookmark of the original request.
 			logContext.recordingBookmark = req.log.recordingBookmark;
 
-			await timeout(ARTIFICIAL_CACHE_HIT_DELAY);
+			const cacheDelay = this._configService.getExperimentBasedConfig(ConfigKey.Internal.InlineEditsCacheDelay, this._expService);
+			await timeout(cacheDelay);
 
 		} else {
 			tracer.trace('fetching next edit');

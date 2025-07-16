@@ -54,9 +54,10 @@ export class CodexAgentManager extends Disposable {
 		}
 
 		const responseDoneDeferred = new DeferredPromise();
+		let eventListener: vscode.Disposable | undefined;
 		try {
 			// Set up event handling
-			const eventListener = codexClient.onEvent(async event => {
+			eventListener = codexClient.onEvent(async event => {
 				const eventMsg = event.msg;
 				switch (eventMsg.type) {
 					case 'agent_message':
@@ -142,7 +143,7 @@ export class CodexAgentManager extends Disposable {
 
 			// Clean up event listener when request is cancelled
 			token.onCancellationRequested(() => {
-				eventListener.dispose();
+				eventListener?.dispose();
 			});
 
 			// Send the user's message to Codex
@@ -155,6 +156,9 @@ export class CodexAgentManager extends Disposable {
 		} catch (error) {
 			progress.markdown(`❌ **Failed to start Codex:** ${error}`);
 			return {};
+		} finally {
+			// Single-use listener
+			eventListener?.dispose();
 		}
 	}
 }

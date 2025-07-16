@@ -336,7 +336,11 @@ class LanguageModelServer {
 					vscodeMessages as any,
 					{
 						tools: request.tools?.map(tool => {
-							return tool.function;
+							return {
+								description: tool.function.description,
+								name: tool.function.name,
+								inputSchema: tool.function.parameters
+							};
 						})
 					},
 					tokenSource.token

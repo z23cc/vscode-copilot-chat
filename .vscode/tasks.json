@@ -12,6 +12,12 @@
 			"script": "watch",
 			"label": "npm: watch - DO NOT USE", // The auto-discovered npm task is also called watch, so we change its name here. This is here until people clear their histories.
 		},
+		  {
+		"label": "Test",
+		"type": "shell",
+		"command": "sleep 1000 && ls -la",
+		"problemMatcher": []
+	},
 		{
 			"label": "watch",
 			"dependsOn": [

@@ -174,6 +174,7 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 			return {
 				invocationMessage: trustedMark(l10n.t`${link(taskLabel ?? options.input.id)} is already running.`),
 				pastTenseMessage: trustedMark(l10n.t`${link(taskLabel ?? options.input.id)} was already running.`),
+				renderStopButton: true,
 				confirmationMessages: undefined
 			};
 		}
@@ -181,6 +182,7 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 		return {
 			invocationMessage: trustedMark(l10n.t`Running ${taskLabel ?? link(options.input.id)}`),
 			pastTenseMessage: trustedMark(task?.isBackground ? l10n.t`Started ${link(taskLabel ?? options.input.id)}` : l10n.t`Ran ${link(taskLabel ?? options.input.id)}`),
+			renderStopButton: true,
 			confirmationMessages: task && task.group !== 'build'
 				? { title: l10n.t`Allow task run?`, message: trustedMark(l10n.t`Allow Copilot to run the \`${task.type}\` task ${link(`\`${this.getTaskRepresentation(task)}\``)}?`) }
 				: undefined

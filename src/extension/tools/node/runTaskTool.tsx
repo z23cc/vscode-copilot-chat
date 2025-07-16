@@ -54,8 +54,8 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 		const taskRunDurationMs = taskEndTime - taskStartTime;
 		let totalDurationMs: number | undefined;
 
-		// Start with 1000 to ensure the buffer has content, wait up to 13 seconds for the task to become idle
-		const checkIntervals = [1000, 100, 100, 100, 100, 100, 200, 200, 200, 200, 200, 200, 500, 500, 500, 1000, 1000, 2000, 5000];
+		// Start with 1000 to ensure the buffer has content, wait up to 20 seconds for the task to become idle
+		const checkIntervals = [1000, 100, 100, 100, 100, 100, 200, 200, 200, 200, 200, 200, 500, 500, 500, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000];
 
 		let pollStartTime: number | undefined;
 		let pollEndTime: number | undefined;

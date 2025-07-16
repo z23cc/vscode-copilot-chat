@@ -54,22 +54,22 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 		const taskRunDurationMs = taskEndTime - taskStartTime;
 		let totalDurationMs: number | undefined;
 
-		// Use a target end time and exponential backoff for polling, up to 20 seconds
+		// Poll for up to 20 seconds
 		const maxWaitMs = 20000;
 		const maxInterval = 2000;
-		let currentInterval = 500;
+		let currentInterval = 1000;
 		const endTime = Date.now() + maxWaitMs;
 
 		let pollStartTime: number | undefined;
 		let pollEndTime: number | undefined;
 		let pollDurationMs: number | undefined;
 		let idleOrInactive: 'idle' | 'inactive' | undefined;
-
 		let lastEvalDurationMs: number | undefined;
 		if (task) {
 			let terminal: vscode.Terminal | undefined;
 			let idleCount = 0;
 			pollStartTime = Date.now();
+			let exitedEarly = false;
 			while (Date.now() < endTime) {
 				await timeout(currentInterval);
 				currentInterval = Math.min(currentInterval * 2, maxInterval);
@@ -81,17 +81,13 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 				}
 				const buffer = this.terminalService.getBufferForTerminal(terminal, 16000);
 				const inactive = !this.tasksService.isTaskActive(task);
-
 				const currentBufferLength = buffer.length;
-				this._lastBufferLength = currentBufferLength;
-
 				if (currentBufferLength === this._lastBufferLength) {
 					idleCount++;
 				} else {
 					idleCount = 0;
+					this._lastBufferLength = currentBufferLength;
 				}
-
-				// If buffer is idle for threshold or task is inactive, evaluate output
 				if (idleCount >= 2 || inactive) {
 					pollEndTime = Date.now();
 					pollDurationMs = pollEndTime - (pollStartTime ?? pollEndTime);
@@ -108,8 +104,12 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 						reason: idleOrInactive,
 						bufferLength: String(buffer.length)
 					}, { taskRunDurationMs, pollDurationMs, totalDuration: totalDurationMs, evalDurationMs });
+					exitedEarly = true;
 					return new LanguageModelToolResult([new LanguageModelTextPart(l10n.t`${evalResult}`)]);
 				}
+			}
+			if (!exitedEarly) {
+				return await this.promptContinueWaiting(task);
 			}
 		}
 
@@ -136,6 +136,11 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 		}
 
 		return new LanguageModelToolResult([new LanguageModelTextPart(output)]);
+	}
+
+	private async promptContinueWaiting(task: vscode.TaskDefinition): Promise<LanguageModelToolResult> {
+		const question = l10n.t`The task "${task.label ?? ''}" is still running. Would you like to continue waiting for it to finish? Reply 'yes' to continue waiting or 'no' to stop.`;
+		return new LanguageModelToolResult([new LanguageModelTextPart(question)]);
 	}
 
 	private async _evaluateOutputForErrors(output: string, token: CancellationToken): Promise<string> {

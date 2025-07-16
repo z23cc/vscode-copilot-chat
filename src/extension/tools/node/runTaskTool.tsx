@@ -54,8 +54,11 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 		const taskRunDurationMs = taskEndTime - taskStartTime;
 		let totalDurationMs: number | undefined;
 
-		// Start with 1000 to ensure the buffer has content, wait up to 20 seconds for the task to become idle
-		const checkIntervals = [1000, 100, 100, 100, 100, 100, 200, 200, 200, 200, 200, 200, 500, 500, 500, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000];
+		// Use a target end time and exponential backoff for polling, up to 20 seconds
+		const maxWaitMs = 20000;
+		const maxInterval = 2000;
+		let currentInterval = 500;
+		const endTime = Date.now() + maxWaitMs;
 
 		let pollStartTime: number | undefined;
 		let pollEndTime: number | undefined;
@@ -67,8 +70,9 @@ class RunTaskTool implements vscode.LanguageModelTool<IRunTaskToolInput> {
 			let terminal: vscode.Terminal | undefined;
 			let idleCount = 0;
 			pollStartTime = Date.now();
-			for (const interval of checkIntervals) {
-				await timeout(interval);
+			while (Date.now() < endTime) {
+				await timeout(currentInterval);
+				currentInterval = Math.min(currentInterval * 2, maxInterval);
 				if (!terminal) {
 					terminal = this.tasksService.getTerminalForTask(task);
 					if (!terminal) {

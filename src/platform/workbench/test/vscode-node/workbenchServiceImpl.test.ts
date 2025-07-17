@@ -7,7 +7,7 @@ import * as assert from 'assert';
 import { WorkbenchServiceImpl } from '../../vscode/workbenchServiceImpt';
 
 suite('HostServiceImpl', () => {
-	test.skip('getAllCommands', async () => { // TODO@TylerLeonhardt
+	test('getAllCommands', async () => {
 		const envService = new WorkbenchServiceImpl();
 		const commands = await envService.getAllCommands();
 		assert.ok(Array.isArray(commands));
@@ -15,7 +15,7 @@ suite('HostServiceImpl', () => {
 		assert.ok(commands[0].label);
 		assert.ok(commands[0].command);
 		assert.ok(commands[0].keybinding);
-	});
+	}).timeout(10000); // Give this test a little bit more time due to potential delays in fetching commands
 
 	test('getAllSettings', async () => {
 		const envService = new WorkbenchServiceImpl();

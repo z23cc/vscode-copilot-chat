@@ -5,7 +5,7 @@
 
 import { expect, suite, test } from 'vitest';
 import { Position, Range, TextEdit } from '../../../../vscodeTypes';
-import { OffsetBasedTextDocument } from '../../common/editCollector';
+import { OffsetBasedTextDocument } from '../../common/offsetBasedTextDocument';
 
 suite('OffsetBasedTextDocument', function () {
 	test('document with \\n', async () => {

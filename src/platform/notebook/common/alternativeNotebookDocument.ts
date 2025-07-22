@@ -48,6 +48,12 @@ export abstract class AlternativeNotebookDocument {
 	 */
 	abstract fromCellPosition(cell: NotebookCell, position: Position): Position;
 
+	fromCellRange(cell: NotebookCell, range: Range): Range {
+		const start = this.fromCellPosition(cell, range.start);
+		const end = this.fromCellPosition(cell, range.end);
+		return new Range(start, end);
+	}
+
 	/**
 	 * Translates a position in the alternative document to the corresponding cell index and position in the notebook document.
 	 */

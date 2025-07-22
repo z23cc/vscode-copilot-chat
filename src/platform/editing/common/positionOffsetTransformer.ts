@@ -25,6 +25,10 @@ export class PositionOffsetTransformer {
 		this._lineStarts = new PrefixSumComputer(lineStartValues);
 	}
 
+	public getText() {
+		return this._lines.join(this._eol);
+	}
+
 	/**
 	 * used for testing
 	 */

@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Diagnostic, DiagnosticSeverity, EndOfLine, languages, Range, TextDocument, TextDocumentChangeEvent, TextDocumentContentChangeEvent, Uri, window, workspace } from 'vscode';
+import { Diagnostic, DiagnosticSeverity, EndOfLine, languages, NotebookDocument, Range, TextDocument, TextDocumentChangeEvent, TextDocumentContentChangeEvent, Uri, window, workspace } from 'vscode';
 import { ConfigKey, IConfigurationService } from '../../../../platform/configuration/common/configurationService';
 import { IIgnoreService } from '../../../../platform/ignore/common/ignoreService';
 import { DiagnosticData } from '../../../../platform/inlineEdits/common/dataTypes/diagnosticData';
@@ -26,13 +26,15 @@ import { StringEdit, StringReplacement } from '../../../../util/vs/editor/common
 import { OffsetRange } from '../../../../util/vs/editor/common/core/ranges/offsetRange';
 import { StringText } from '../../../../util/vs/editor/common/core/text/abstractText';
 import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
+import { isEqual } from '../../../../util/vs/base/common/resources';
+import { AlternativeNotebookTextDocument, editFromNotebookCellTextDocumentContentChangeEvents } from '../../../../platform/notebook/common/alternativeNotebookTextDocument';
 
 export class VSCodeWorkspace extends ObservableWorkspace implements IDisposable {
 	private readonly _openDocuments = observableValue<readonly IVSCodeObservableDocument[], { added: readonly IVSCodeObservableDocument[]; removed: readonly IVSCodeObservableDocument[] }>(this, []);
 	public readonly openDocuments = this._openDocuments;
 	private readonly _store = new DisposableStore();
 	private readonly _filter: DocumentFilter;
-
+	private readonly _altNotebookDoc = new Map<NotebookDocument, AlternativeNotebookTextDocument>();
 	constructor(
 		@IWorkspaceService private readonly _workspaceService: IWorkspaceService,
 		@IInstantiationService private readonly _instaService: IInstantiationService,
@@ -63,7 +65,19 @@ export class VSCodeWorkspace extends ObservableWorkspace implements IDisposable 
 			});
 		}));
 
+		this._store.add(workspace.onDidOpenNotebookDocument(doc => {
+			const altDoc = AlternativeNotebookTextDocument.withoutMDCells(doc);
+			this._altNotebookDoc.set(doc, altDoc);
+		}));
+
+		this._store.add(workspace.onDidCloseNotebookDocument(doc => {
+			this._altNotebookDoc.delete(doc);
+		}));
+
 		this._store.add(workspace.onDidChangeTextDocument(e => {
+			if (e.document.uri.scheme !== Schemas.vscodeNotebookCell) {
+				return;
+			}
 			const doc = this._getDocumentByTextDocumentAndUpdateShouldTrack(e.document.uri);
 			if (!doc) {
 				return;
@@ -74,6 +88,37 @@ export class VSCodeWorkspace extends ObservableWorkspace implements IDisposable 
 				doc.languageId.set(LanguageId.create(e.document.languageId), tx);
 				doc.value.set(stringValueFromDoc(e.document), tx, editWithReason);
 				doc.version.set(e.document.version, tx);
+			});
+		}));
+
+		// this._store.add(workspace.'onDidChangeNotebookDocument'(e => {
+		// 	console.error(e);
+		// }));
+
+		this._store.add(workspace.onDidChangeTextDocument(e => {
+			if (e.document.uri.scheme === Schemas.vscodeNotebookCell) {
+				return;
+			}
+			const altDoc = Array.from(this._altNotebookDoc.values()).find(doc => doc.getCell(e.document));
+			const cell = altDoc?.getCell(e.document);
+			const doc = altDoc && this._getDocumentByTextDocumentAndUpdateShouldTrack(altDoc.notebook.uri);
+			if (!altDoc || !doc || !cell) {
+				return;
+			}
+			const altDocChanges = e.contentChanges.map(change => {
+				const newChange = { ...change };
+				newChange.range = altDoc.toAltRange(cell, [change.range])[0];
+				newChange.rangeOffset = altDoc.toAltOffsetRange(cell, [newChange.range])[0].start;
+				return newChange;
+			});
+			const edit = editFromNotebookCellTextDocumentContentChangeEvents(altDoc, e.document, altDocChanges);
+			const editWithReason = new StringEditWithReason(edit.replacements, EditReason.create(e.detailedReason?.metadata as any));
+			// Update the alternative document with a new document.
+			this._altNotebookDoc.set(altDoc.notebook, new AlternativeNotebookTextDocument(altDoc.notebook, true));
+			transaction(tx => {
+				doc.languageId.set(LanguageId.create(e.document.languageId), tx);
+				doc.value.set(new StringText(altDoc.altText), tx, editWithReason);
+				doc.version.set(altDoc.notebook.version, tx);
 			});
 		}));
 
@@ -117,6 +162,7 @@ export class VSCodeWorkspace extends ObservableWorkspace implements IDisposable 
 	});
 
 	private readonly _vscodeTextDocuments = getTextDocuments();
+	private readonly _vscodeNotebookDocuments = getNotebookDocuments();
 	private readonly _docsWithShouldTrackFlag = mapObservableArrayCached(this, this._vscodeTextDocuments, (doc, store) => {
 		const shouldTrack = observableValue<boolean>(this, false);
 		const updateShouldTrack = () => {
@@ -149,6 +195,39 @@ export class VSCodeWorkspace extends ObservableWorkspace implements IDisposable 
 			obsDoc,
 		};
 	});
+
+	// private readonly _notebookDocsWithShouldTrackFlag = mapObservableArrayCached(this, this._vscodeNotebookDocuments, (doc, store) => {
+	// 	const shouldTrack = observableValue<boolean>(this, false);
+	// 	const updateShouldTrack = () => {
+	// 		// @ulugbekna: not sure if invoking `isCopilotIgnored` on every textDocument-edit event is a good idea
+	// 		// 	also not sure if we should be enforcing local copilot-ignore rules (vs only remote-exclusion rules)
+	// 		this._filter.isTrackingEnabled(doc).then(v => {
+	// 			shouldTrack.set(v, undefined);
+	// 		}).catch(e => {
+	// 			onUnexpectedError(e);
+	// 		});
+	// 	};
+	// 	const obsDoc = derived(this, reader => {
+	// 		if (!shouldTrack.read(reader)) {
+	// 			return undefined;
+	// 		}
+
+	// 		const documentId = DocumentId.create(doc.uri.toString());
+	// 		const openedTextEditor = window.visibleNotebookEditors.find(e => isEqual(e.notebook.uri, doc.uri));
+	// 		const selections = openedTextEditor?.selections.map(s => rangeToOffsetRange(s, doc));
+	// 		const visibleRanges = openedTextEditor?.visibleRanges.map(r => rangeToOffsetRange(r, doc));
+	// 		const diagnostics = doc.getCells().map(cell => languages.getDiagnostics(cell.document.uri).map(d => this._createDiagnosticData(d, doc)).filter(isDefined);
+	// 		const document = new VSCodeObservableDocument(documentId, stringValueFromDoc(doc), doc.version, selections ?? [], visibleRanges ?? [], LanguageId.create(doc.languageId), diagnostics, doc);
+	// 		return document;
+	// 	}).recomputeInitiallyAndOnChange(store);
+
+	// 	updateShouldTrack();
+	// 	return {
+	// 		doc,
+	// 		updateShouldTrack,
+	// 		obsDoc,
+	// 	};
+	// });
 
 	private _getDocumentByTextDocumentAndUpdateShouldTrack(uri: URI): VSCodeObservableDocument | undefined {
 		const internalDoc = this._getInternalDocument(uri);
@@ -252,9 +331,26 @@ function getTextDocuments(): IObservable<readonly TextDocument[]> {
 				d2.dispose();
 			}
 		};
-	}, () => workspace.textDocuments);
+	}, () => workspace.textDocuments.filter(doc => doc.uri.scheme !== Schemas.vscodeNotebookCell));
 }
 
+function getNotebookDocuments(): IObservable<readonly NotebookDocument[]> {
+	return observableFromEvent(undefined, e => {
+		const d1 = workspace.onDidOpenNotebookDocument(e);
+		const d2 = workspace.onDidCloseNotebookDocument(e);
+		return {
+			dispose: () => {
+				d1.dispose();
+				d2.dispose();
+			}
+		};
+	}, () => workspace.notebookDocuments);
+}
+
+function isTextDocument(document: TextDocument | NotebookDocument): document is TextDocument {
+	const notebook = document as NotebookDocument;
+	return !notebook.cellAt && !notebook.notebookType;
+}
 export class DocumentFilter {
 	private readonly _enabledLanguagesObs;
 	private readonly _ignoreCompletionsDisablement;
@@ -267,12 +363,12 @@ export class DocumentFilter {
 		this._ignoreCompletionsDisablement = this._configurationService.getConfigObservable(ConfigKey.Internal.InlineEditsIgnoreCompletionsDisablement);
 	}
 
-	public async isTrackingEnabled(document: TextDocument): Promise<boolean> {
+	public async isTrackingEnabled(document: TextDocument | NotebookDocument): Promise<boolean> {
 		// this should filter out documents coming from output pane, git fs, etc.
 		if (!['file', 'untitled'].includes(document.uri.scheme) && !isNotebookCellOrNotebookChatInput(document.uri)) {
 			return false;
 		}
-		if (!this._isGhostTextEnabled(document.languageId)) {
+		if (isTextDocument(document) && !this._isGhostTextEnabled(document.languageId)) {
 			return false;
 		}
 		if (await this._ignoreService.isCopilotIgnored(document.uri)) {

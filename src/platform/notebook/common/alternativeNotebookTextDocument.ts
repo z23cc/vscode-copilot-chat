@@ -8,7 +8,7 @@ import { coalesce } from '../../../util/vs/base/common/arrays';
 import { findLastIdxMonotonous } from '../../../util/vs/base/common/arraysFind';
 import { StringEdit } from '../../../util/vs/editor/common/core/edits/stringEdit';
 import { OffsetRange } from '../../../util/vs/editor/common/core/ranges/offsetRange';
-import { NotebookCellKind, Range, Position as VSCodePosition } from '../../../vscodeTypes';
+import { NotebookCellKind, Range, Position } from '../../../vscodeTypes';
 import { stringEditFromTextContentChange } from '../../editing/common/edit';
 import { PositionOffsetTransformer } from '../../editing/common/positionOffsetTransformer';
 import { generateCellTextMarker, getBlockComment, getLineCommentStart } from './alternativeContentProvider.text';
@@ -65,11 +65,15 @@ class AlternativeNotebookCellTextDocument {
 	}
 
 	public toAltOffsetRange(range: Range): OffsetRange {
+		const startOffset = this.toAltOffset(range.start);
+		const endOffset = this.toAltOffset(range.end);
+		return new OffsetRange(startOffset, endOffset);
+	}
+
+	public toAltOffset(position: Position): number {
 		// Remove the lines we've added for the cell marker and block comments
 		const extraLinesAdded = this.cell.kind === NotebookCellKind.Markup ? 2 : 1;
-		const startOffset = this.positionTransformer.getOffset(new VSCodePosition(range.start.line + extraLinesAdded, range.start.character));
-		const endOffset = this.positionTransformer.getOffset(new VSCodePosition(range.end.line + extraLinesAdded, range.end.character));
-		return new OffsetRange(startOffset, endOffset);
+		return this.positionTransformer.getOffset(new Position(position.line + extraLinesAdded, position.character));
 	}
 
 	public toAltRange(range: Range): Range {
@@ -189,6 +193,15 @@ export class AlternativeNotebookTextDocument {
 		}
 
 		return cells;
+	}
+
+	public toAltOffset(cell: NotebookCell, position: Position): number | undefined {
+		const altCell = this.altCells.find(c => c.altCell.cell === cell);
+		if (altCell) {
+			return altCell.altCell.toAltOffset(position);
+		} else {
+			return undefined;
+		}
 	}
 
 	public toAltOffsetRange(cell: NotebookCell, ranges: readonly Range[]): OffsetRange[] {

@@ -35,6 +35,7 @@ import { InlineEditModel } from './inlineEditModel';
 import { learnMoreCommandId, learnMoreLink } from './inlineEditProviderFeature';
 import { isInlineSuggestion } from './isInlineSuggestion';
 import { InlineEditLogger } from './parts/inlineEditLogger';
+import { IVSCodeObservableNotebookDocument } from './parts/vscodeWorkspace';
 
 export interface NesCompletionItem extends InlineCompletionItem {
 	readonly telemetryBuilder: NextEditProviderTelemetryBuilder;
@@ -176,11 +177,11 @@ export class InlineCompletionProviderImpl implements InlineCompletionItemProvide
 
 			const emptyList = new NesCompletionList(context.requestUuid, undefined, [], telemetryBuilder);
 
-			if (token.isCancellationRequested) {
-				tracer.returns('lost race to cancellation');
-				this.telemetrySender.scheduleSendingEnhancedTelemetry({ requestId: logContext.requestId, result: undefined }, telemetryBuilder);
-				return emptyList;
-			}
+			// if (token.isCancellationRequested) {
+			// 	tracer.returns('lost race to cancellation');
+			// 	this.telemetrySender.scheduleSendingEnhancedTelemetry({ requestId: logContext.requestId, result: undefined }, telemetryBuilder);
+			// 	return emptyList;
+			// }
 
 			// Determine which suggestion to use
 			if (diagnosticsSuggestion?.result) {
@@ -203,7 +204,21 @@ export class InlineCompletionProviderImpl implements InlineCompletionItemProvide
 
 			tracer.trace(`using next edit suggestion from ${suggestionInfo.source}`);
 
-			const range = documentRangeFromOffsetRange(document, result.edit.replaceRange);
+			let range: Range;
+
+			const obsNotebook = (doc as IVSCodeObservableNotebookDocument).notebook ? (doc as IVSCodeObservableNotebookDocument) : undefined;
+			if (obsNotebook) {
+				const cellRange = obsNotebook.fromOffsetRange(result.edit.replaceRange).find(([cell]) => cell.document === document);
+				if (cellRange) {
+					range = cellRange[1];
+				} else {
+					tracer.trace('no next edit suggestion for notebook cell');
+					this.telemetrySender.scheduleSendingEnhancedTelemetry(suggestionInfo.suggestion, telemetryBuilder);
+					return emptyList;
+				}
+			} else {
+				range = documentRangeFromOffsetRange(document, result.edit.replaceRange);
+			}
 
 			// Only show edit when the cursor is max 4 lines away from the edit
 			const showRange = (

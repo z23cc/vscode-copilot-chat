@@ -13,7 +13,7 @@ import { IInstantiationService } from '../../../../util/vs/platform/instantiatio
 import { ObservableVsCode } from '../../../workspaceRecorder/vscode-node/utilsObservable';
 import { EditSource } from '../../common/documentWithAnnotatedEdits';
 import { EditSourceTrackingImpl } from '../../common/editSourceTrackingImpl';
-import { IVSCodeObservableDocument, VSCodeWorkspace } from '../parts/vscodeWorkspace';
+import { IVSCodeObservableNotebookDocument, IVSCodeObservableTextDocument, VSCodeWorkspace } from '../parts/vscodeWorkspace';
 import { makeSettable } from '../utils/observablesUtils';
 
 export class EditSourceTrackingFeature extends Disposable {
@@ -35,8 +35,16 @@ export class EditSourceTrackingFeature extends Disposable {
 		const visibleTextEditorDocs = ObservableVsCode.instance.visibleTextEditors.map(editors => new Set(editors.map(e => e.editor.document)));
 
 		const impl = this._register(this._instantiationService.createInstance(EditSourceTrackingImpl, _workspace, (doc, reader) => {
-			const docIsVisible = visibleTextEditorDocs.read(reader).has((doc as IVSCodeObservableDocument).textDocument);
-			return docIsVisible;
+			const textDoc = (doc as IVSCodeObservableTextDocument);
+			if (textDoc.textDocument) {
+				const docIsVisible = visibleTextEditorDocs.read(reader).has(textDoc.textDocument);
+				return docIsVisible;
+			} else {
+				const notebook = (doc as IVSCodeObservableNotebookDocument).notebook;
+				const visibleEditors = visibleTextEditorDocs.read(reader);
+				const docIsVisible = notebook.getCells().some(c => visibleEditors.has(c.document));
+				return docIsVisible;
+			}
 		}));
 
 		this._register(autorun((reader) => {

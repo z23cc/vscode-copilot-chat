@@ -33,7 +33,7 @@ import { Range } from '../../../../util/vs/editor/common/core/range';
 import { StringText } from '../../../../util/vs/editor/common/core/text/abstractText';
 import { getInformationDelta, InformationDelta } from '../../common/ghNearbyNesProvider';
 import { RejectionCollector } from '../../common/rejectionCollector';
-import { IVSCodeObservableDocument, VSCodeWorkspace } from '../parts/vscodeWorkspace';
+import { IVSCodeObservableDocument, IVSCodeObservableTextDocument, VSCodeWorkspace } from '../parts/vscodeWorkspace';
 import { AnyDiagnosticCompletionItem, AnyDiagnosticCompletionProvider } from './diagnosticsBasedCompletions/anyDiagnosticsCompletionProvider';
 import { AsyncDiagnosticCompletionProvider } from './diagnosticsBasedCompletions/asyncDiagnosticsCompletionProvider';
 import { Diagnostic, DiagnosticCompletionItem, DiagnosticInlineEditRequestLogContext, DiagnosticSeverity, distanceToClosestDiagnostic, IDiagnosticCompletionProvider, log, logList, sortDiagnosticsByDistance, toInternalPosition } from './diagnosticsBasedCompletions/diagnosticsCompletions';
@@ -308,6 +308,10 @@ export class DiagnosticsCompletionProcessor extends Disposable {
 	}
 
 	private _getDiagnostics(workspaceDocument: IVSCodeObservableDocument, cursor: Position, logContext: DiagnosticInlineEditRequestLogContext): { availableDiagnostics: Diagnostic[]; relevantDiagnostics: Diagnostic[] } {
+		workspaceDocument = workspaceDocument as IVSCodeObservableTextDocument;
+		if (!workspaceDocument.textDocument){
+			return { availableDiagnostics: [], relevantDiagnostics: [] };
+		}
 		const availableDiagnostics = this._languageDiagnosticsService
 			.getDiagnostics(workspaceDocument.textDocument.uri)
 			.map(diagnostic => Diagnostic.fromVSCodeDiagnostic(diagnostic))

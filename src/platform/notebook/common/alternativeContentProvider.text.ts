@@ -41,11 +41,11 @@ class AlternativeTextDocument extends AlternativeNotebookDocument {
 
 	override toCellPosition(position: Position): { cell: NotebookCell; position: Position } | undefined {
 		const offset = this.offsetAt(position);
-		const cell = findLast(this.cellOffsetMap, (cell) => cell.offset <= offset);
+		const cell = findLast(this.cellOffsetMap, (cell) => cell.sourceOffset <= offset);
 		if (!cell) {
 			return undefined;
 		}
-		const cellPosition = cell.cell.document.positionAt(offset - cell.offset);
+		const cellPosition = cell.cell.document.positionAt(offset - cell.sourceOffset);
 		return { cell: cell.cell, position: cellPosition };
 	}
 }

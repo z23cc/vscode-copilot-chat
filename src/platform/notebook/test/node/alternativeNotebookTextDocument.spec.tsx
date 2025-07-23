@@ -30,18 +30,18 @@ describe('Edit Notebook Tool', () => {
 				new NotebookCellData(NotebookCellKind.Code, 'print("Hello World")', 'python'),
 			];
 			const { altDoc } = createNotebook(cells);
-			expect(altDoc.getAltText()).toMatchSnapshot();
+			expect(altDoc.getText()).toMatchSnapshot();
 		});
 		test(`No Content`, async () => {
 			const { altDoc } = createNotebook([]);
-			expect(altDoc.getAltText()).toMatchSnapshot();
+			expect(altDoc.getText()).toMatchSnapshot();
 		});
 		test(`No Content without code cells`, async () => {
 			const cells = [
 				new NotebookCellData(NotebookCellKind.Markup, '# This is a sample notebook', 'markdown'),
 			];
 			const { altDoc } = createNotebook(cells);
-			expect(altDoc.getAltText()).toMatchSnapshot();
+			expect(altDoc.getText()).toMatchSnapshot();
 		});
 		test(`Exclude Markdown Cells`, async () => {
 			const cells = [
@@ -52,7 +52,7 @@ describe('Edit Notebook Tool', () => {
 				new NotebookCellData(NotebookCellKind.Code, 'print("Foo Bar")', 'python'),
 			];
 			const { altDoc } = createNotebook(cells);
-			expect(altDoc.getAltText()).toMatchSnapshot();
+			expect(altDoc.getText()).toMatchSnapshot();
 		});
 		test(`EOLs`, async () => {
 			const cells = [
@@ -62,9 +62,9 @@ describe('Edit Notebook Tool', () => {
 				new NotebookCellData(NotebookCellKind.Code, 'print(sys.executable)\nprint(sys.version)', 'python'),
 			];
 			const { altDoc } = createNotebook(cells);
-			expect(altDoc.getAltText()).toMatchSnapshot();
-			expect(altDoc.getAltText()).not.toContain('\r\n'); // Ensure no CRLF, only LF
-			expect(altDoc.getAltText()).toContain('\n'); // Ensure no CRLF, only LF
+			expect(altDoc.getText()).toMatchSnapshot();
+			expect(altDoc.getText()).not.toContain('\r\n'); // Ensure no CRLF, only LF
+			expect(altDoc.getText()).toContain('\n'); // Ensure no CRLF, only LF
 		});
 	});
 	describe('Position Mapping', () => {
@@ -77,48 +77,48 @@ describe('Edit Notebook Tool', () => {
 			];
 			const { notebook, altDoc } = createNotebook(cells);
 
-			expect(altDoc.getAltText(new OffsetRange(53, 59))).toBe('import');
+			expect(altDoc.getText(new OffsetRange(53, 59))).toBe('import');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(53, 59))).toEqual([[notebook.cellAt(0), new Range(0, 0, 0, 6)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(0), [new Range(0, 0, 0, 6)])).toEqual([new OffsetRange(53, 59)]);
 
-			expect(altDoc.getAltText(new OffsetRange(53, 64))).toBe('import sys\n');
+			expect(altDoc.getText(new OffsetRange(53, 64))).toBe('import sys\n');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(53, 64))).toEqual([[notebook.cellAt(0), new Range(0, 0, 1, 0)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(0), [new Range(0, 0, 1, 0)])).toEqual([new OffsetRange(53, 64)]);
 
-			expect(altDoc.getAltText(new OffsetRange(53, 74))).toBe('import sys\nimport os\n');
+			expect(altDoc.getText(new OffsetRange(53, 74))).toBe('import sys\nimport os\n');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(53, 74))).toEqual([[notebook.cellAt(0), new Range(0, 0, 1, 9)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(0), [new Range(0, 0, 1, 9)])).toEqual([new OffsetRange(53, 73)]);
 
 			// Translating alt text range across cells will only return contents of one cell.
-			expect(altDoc.getAltText(new OffsetRange(53, 140))).toBe('import sys\nimport os\n#%% vscode.cell [id=#VSC-bdb3864a] [language=python]\nimport pandas');
+			expect(altDoc.getText(new OffsetRange(53, 140))).toBe('import sys\nimport os\n#%% vscode.cell [id=#VSC-bdb3864a] [language=python]\nimport pandas');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(53, 140))).toEqual([[notebook.cellAt(0), new Range(0, 0, 1, 9)], [notebook.cellAt(1), new Range(0, 0, 0, 13)]]);
 
-			expect(altDoc.getAltText(new OffsetRange(71, 73))).toBe('os');
+			expect(altDoc.getText(new OffsetRange(71, 73))).toBe('os');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(71, 73))).toEqual([[notebook.cellAt(0), new Range(1, 7, 1, 9)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(0), [new Range(1, 7, 1, 9)])).toEqual([new OffsetRange(71, 73)]);
 
-			expect(altDoc.getAltText(new OffsetRange(134, 258))).toBe('pandas\nimport requests\n#%% vscode.cell [id=#VSC-8862d4f3] [language=python]\nprint("Hello World")\nprint("Foo Bar")\nprint("Bar');
+			expect(altDoc.getText(new OffsetRange(134, 258))).toBe('pandas\nimport requests\n#%% vscode.cell [id=#VSC-8862d4f3] [language=python]\nprint("Hello World")\nprint("Foo Bar")\nprint("Bar');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(134, 258))).toEqual([
 				[notebook.cellAt(1), new Range(0, 7, 1, 15)],
 				[notebook.cellAt(2), new Range(0, 0, 2, 10)],
 			]);
 
-			expect(altDoc.getAltText(new OffsetRange(134, 156))).toBe('pandas\nimport requests');
+			expect(altDoc.getText(new OffsetRange(134, 156))).toBe('pandas\nimport requests');
 			expect(notebook.cellAt(1).document.getText(new Range(0, 7, 1, 15))).toBe('pandas\nimport requests');
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(1), [new Range(0, 7, 1, 15)])).toEqual([new OffsetRange(134, 156)]);
-			expect(altDoc.getAltText(new OffsetRange(210, 258))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar');
+			expect(altDoc.getText(new OffsetRange(210, 258))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar');
 			expect(notebook.cellAt(2).document.getText(new Range(0, 0, 2, 10))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar');
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(2), [new Range(0, 0, 2, 10)])).toEqual([new OffsetRange(210, 258)]);
 
-			expect(altDoc.getAltText(new OffsetRange(210, 265))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar Baz")\n');
+			expect(altDoc.getText(new OffsetRange(210, 265))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar Baz")\n');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(210, 265))).toEqual([[notebook.cellAt(2), new Range(0, 0, 2, 16)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(2), [new Range(0, 0, 2, 16)])).toEqual([new OffsetRange(210, 264)]);
 
-			expect(altDoc.getAltText(new OffsetRange(318, 358))).toBe('print(sys.executable)\nprint(sys.version)');
+			expect(altDoc.getText(new OffsetRange(318, 358))).toBe('print(sys.executable)\nprint(sys.version)');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(318, 358))).toEqual([[notebook.cellAt(3), new Range(0, 0, 1, 18)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(3), [new Range(0, 0, 1, 18)])).toEqual([new OffsetRange(318, 358)]);
 
-			expect(altDoc.getAltText(new OffsetRange(60, 349))).toBe('sys\nimport os\n#%% vscode.cell [id=#VSC-bdb3864a] [language=python]\nimport pandas\nimport requests\n#%% vscode.cell [id=#VSC-8862d4f3] [language=python]\nprint("Hello World")\nprint("Foo Bar")\nprint("Bar Baz")\n#%% vscode.cell [id=#VSC-e07487cb] [language=python]\nprint(sys.executable)\nprint(sys');
+			expect(altDoc.getText(new OffsetRange(60, 349))).toBe('sys\nimport os\n#%% vscode.cell [id=#VSC-bdb3864a] [language=python]\nimport pandas\nimport requests\n#%% vscode.cell [id=#VSC-8862d4f3] [language=python]\nprint("Hello World")\nprint("Foo Bar")\nprint("Bar Baz")\n#%% vscode.cell [id=#VSC-e07487cb] [language=python]\nprint(sys.executable)\nprint(sys');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(60, 349))).toEqual([
 				[notebook.cellAt(0), new Range(0, 7, 1, 9)],
 				[notebook.cellAt(1), new Range(0, 0, 1, 15)],
@@ -136,48 +136,48 @@ describe('Edit Notebook Tool', () => {
 			const { notebook, altDoc } = createNotebook(cells);
 
 
-			expect(altDoc.getAltText(new OffsetRange(53, 59))).toBe('import');
+			expect(altDoc.getText(new OffsetRange(53, 59))).toBe('import');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(53, 59))).toEqual([[notebook.cellAt(0), new Range(0, 0, 0, 6)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(0), [new Range(0, 0, 0, 6)])).toEqual([new OffsetRange(53, 59)]);
 
-			expect(altDoc.getAltText(new OffsetRange(53, 64))).toBe('import sys\n');
+			expect(altDoc.getText(new OffsetRange(53, 64))).toBe('import sys\n');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(53, 64))).toEqual([[notebook.cellAt(0), new Range(0, 0, 1, 0)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(0), [new Range(0, 0, 1, 0)])).toEqual([new OffsetRange(53, 64)]);
 
-			expect(altDoc.getAltText(new OffsetRange(53, 74))).toBe('import sys\nimport os\n');
+			expect(altDoc.getText(new OffsetRange(53, 74))).toBe('import sys\nimport os\n');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(53, 74))).toEqual([[notebook.cellAt(0), new Range(0, 0, 1, 9)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(0), [new Range(0, 0, 1, 9)])).toEqual([new OffsetRange(53, 73)]);
 
 			// Translating alt text range across cells will only return contents of one cell.
-			expect(altDoc.getAltText(new OffsetRange(53, 140))).toBe('import sys\nimport os\n#%% vscode.cell [id=#VSC-bdb3864a] [language=python]\nimport pandas');
+			expect(altDoc.getText(new OffsetRange(53, 140))).toBe('import sys\nimport os\n#%% vscode.cell [id=#VSC-bdb3864a] [language=python]\nimport pandas');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(53, 140))).toEqual([[notebook.cellAt(0), new Range(0, 0, 1, 9)], [notebook.cellAt(1), new Range(0, 0, 0, 13)]]);
 
-			expect(altDoc.getAltText(new OffsetRange(71, 73))).toBe('os');
+			expect(altDoc.getText(new OffsetRange(71, 73))).toBe('os');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(71, 73))).toEqual([[notebook.cellAt(0), new Range(1, 7, 1, 9)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(0), [new Range(1, 7, 1, 9)])).toEqual([new OffsetRange(71, 73)]);
 
-			expect(altDoc.getAltText(new OffsetRange(134, 258))).toBe('pandas\nimport requests\n#%% vscode.cell [id=#VSC-8862d4f3] [language=python]\nprint("Hello World")\nprint("Foo Bar")\nprint("Bar');
+			expect(altDoc.getText(new OffsetRange(134, 258))).toBe('pandas\nimport requests\n#%% vscode.cell [id=#VSC-8862d4f3] [language=python]\nprint("Hello World")\nprint("Foo Bar")\nprint("Bar');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(134, 258))).toEqual([
 				[notebook.cellAt(1), new Range(0, 7, 1, 15)],
 				[notebook.cellAt(2), new Range(0, 0, 2, 10)],
 			]);
 
-			expect(altDoc.getAltText(new OffsetRange(134, 156))).toBe('pandas\nimport requests');
+			expect(altDoc.getText(new OffsetRange(134, 156))).toBe('pandas\nimport requests');
 			expect(notebook.cellAt(1).document.getText(new Range(0, 7, 1, 15))).toBe('pandas\r\nimport requests');
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(1), [new Range(0, 7, 1, 15)])).toEqual([new OffsetRange(134, 156)]);
-			expect(altDoc.getAltText(new OffsetRange(210, 258))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar');
+			expect(altDoc.getText(new OffsetRange(210, 258))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar');
 			expect(notebook.cellAt(2).document.getText(new Range(0, 0, 2, 10))).toBe('print("Hello World")\r\nprint("Foo Bar")\r\nprint("Bar');
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(2), [new Range(0, 0, 2, 10)])).toEqual([new OffsetRange(210, 258)]);
 
-			expect(altDoc.getAltText(new OffsetRange(210, 265))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar Baz")\n');
+			expect(altDoc.getText(new OffsetRange(210, 265))).toBe('print("Hello World")\nprint("Foo Bar")\nprint("Bar Baz")\n');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(210, 265))).toEqual([[notebook.cellAt(2), new Range(0, 0, 2, 16)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(2), [new Range(0, 0, 2, 16)])).toEqual([new OffsetRange(210, 264)]);
 
-			expect(altDoc.getAltText(new OffsetRange(318, 358))).toBe('print(sys.executable)\nprint(sys.version)');
+			expect(altDoc.getText(new OffsetRange(318, 358))).toBe('print(sys.executable)\nprint(sys.version)');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(318, 358))).toEqual([[notebook.cellAt(3), new Range(0, 0, 1, 18)]]);
 			expect(altDoc.toAltOffsetRange(notebook.cellAt(3), [new Range(0, 0, 1, 18)])).toEqual([new OffsetRange(318, 358)]);
 
-			expect(altDoc.getAltText(new OffsetRange(60, 349))).toBe('sys\nimport os\n#%% vscode.cell [id=#VSC-bdb3864a] [language=python]\nimport pandas\nimport requests\n#%% vscode.cell [id=#VSC-8862d4f3] [language=python]\nprint("Hello World")\nprint("Foo Bar")\nprint("Bar Baz")\n#%% vscode.cell [id=#VSC-e07487cb] [language=python]\nprint(sys.executable)\nprint(sys');
+			expect(altDoc.getText(new OffsetRange(60, 349))).toBe('sys\nimport os\n#%% vscode.cell [id=#VSC-bdb3864a] [language=python]\nimport pandas\nimport requests\n#%% vscode.cell [id=#VSC-8862d4f3] [language=python]\nprint("Hello World")\nprint("Foo Bar")\nprint("Bar Baz")\n#%% vscode.cell [id=#VSC-e07487cb] [language=python]\nprint(sys.executable)\nprint(sys');
 			expect(altDoc.fromAltOffsetRange(new OffsetRange(60, 349))).toEqual([
 				[notebook.cellAt(0), new Range(0, 7, 1, 9)],
 				[notebook.cellAt(1), new Range(0, 0, 1, 15)],
@@ -200,10 +200,10 @@ describe('Edit Notebook Tool', () => {
 			function getUpdatedAltText(e: TextDocumentChangeEvent): string {
 				const newDoc = altDoc.withCellChanges(e.document, e.contentChanges);
 				const edit = editFromNotebookCellTextDocumentContentChangeEvents(altDoc, e.document, e.contentChanges);
-				const updatedAltText = newDoc.getAltText();
+				const updatedAltText = newDoc.getText();
 
 				// Verify the alt text is updated correctly
-				expect(updatedAltText).toBe(edit!.apply(altDoc.getAltText()));
+				expect(updatedAltText).toBe(edit!.apply(altDoc.getText()));
 
 				return updatedAltText;
 			}
@@ -300,10 +300,10 @@ describe('Edit Notebook Tool', () => {
 			function getUpdatedAltText(e: TextDocumentChangeEvent): string {
 				const newDoc = altDoc.withCellChanges(e.document, e.contentChanges);
 				const edit = editFromNotebookCellTextDocumentContentChangeEvents(altDoc, e.document, e.contentChanges);
-				const updatedAltText = newDoc.getAltText();
+				const updatedAltText = newDoc.getText();
 
 				// Verify the alt text is updated correctly
-				expect(updatedAltText).toBe(edit!.apply(altDoc.getAltText()));
+				expect(updatedAltText).toBe(edit!.apply(altDoc.getText()));
 
 				return updatedAltText;
 			}
@@ -470,10 +470,10 @@ describe('Edit Notebook Tool', () => {
 				const newDoc = altDoc.withCellChanges(e.document, e.contentChanges);
 				const edit = editFromNotebookCellTextDocumentContentChangeEvents(altDoc, e.document, e.contentChanges);
 
-				const updatedAltText = newDoc.getAltText();
+				const updatedAltText = newDoc.getText();
 
 				// Verify the alt text is updated correctly
-				expect(updatedAltText).toBe(edit!.apply(altDoc.getAltText()));
+				expect(updatedAltText).toBe(edit!.apply(altDoc.getText()));
 
 				return updatedAltText;
 			}
@@ -641,10 +641,10 @@ describe('Edit Notebook Tool', () => {
 			function getUpdatedAltText(e: TextDocumentChangeEvent): string {
 				const newDoc = altDoc.withCellChanges(e.document, e.contentChanges);
 				const edit = editFromNotebookCellTextDocumentContentChangeEvents(altDoc, e.document, e.contentChanges);
-				const updatedAltText = newDoc.getAltText();
+				const updatedAltText = newDoc.getText();
 
 				// Verify the alt text is updated correctly
-				expect(updatedAltText).toBe(edit!.apply(altDoc.getAltText()));
+				expect(updatedAltText).toBe(edit!.apply(altDoc.getText()));
 
 				return updatedAltText;
 			}
@@ -1301,10 +1301,10 @@ describe('Edit Notebook Tool', () => {
 				({ altDoc, notebook } = createNotebook(cells));
 			});
 			function getUpdatedAltText(e: NotebookDocumentContentChange[]): string {
-				const originalText = altDoc.getAltText();
+				const originalText = altDoc.getText();
 				const newDoc = altDoc.withNotebookChanges(e);
 				const edit = editFromNotebookChangeEvents(altDoc, e);
-				const updatedAltText = newDoc.getAltText();
+				const updatedAltText = newDoc.getText();
 				if (edit) {
 					// Verify the edit is generated correctly
 					expect(edit.apply(originalText)).toBe(updatedAltText);
@@ -1393,10 +1393,10 @@ describe('Edit Notebook Tool', () => {
 				({ altDoc, notebook } = createNotebook(cells));
 			});
 			function getUpdatedAltText(e: NotebookDocumentContentChange[]): string {
-				const originalText = altDoc.getAltText();
+				const originalText = altDoc.getText();
 				const newDoc = altDoc.withNotebookChanges(e);
 				const edit = editFromNotebookChangeEvents(altDoc, e);
-				const updatedAltText = newDoc.getAltText();
+				const updatedAltText = newDoc.getText();
 				if (edit) {
 					// Verify the edit is generated correctly
 					expect(edit.apply(originalText)).toBe(updatedAltText);

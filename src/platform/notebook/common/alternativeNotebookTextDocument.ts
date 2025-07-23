@@ -8,7 +8,7 @@ import { coalesce } from '../../../util/vs/base/common/arrays';
 import { findLastIdxMonotonous } from '../../../util/vs/base/common/arraysFind';
 import { StringEdit } from '../../../util/vs/editor/common/core/edits/stringEdit';
 import { OffsetRange } from '../../../util/vs/editor/common/core/ranges/offsetRange';
-import { NotebookCellKind, Range, Position } from '../../../vscodeTypes';
+import { NotebookCellKind, Position, Range } from '../../../vscodeTypes';
 import { stringEditFromTextContentChange } from '../../editing/common/edit';
 import { PositionOffsetTransformer } from '../../editing/common/positionOffsetTransformer';
 import { generateCellTextMarker, getBlockComment, getLineCommentStart } from './alternativeContentProvider.text';
@@ -166,7 +166,7 @@ export class AlternativeNotebookTextDocument {
 		return this.cellTextDocuments.get(textDocument);
 	}
 
-	public getAltText(range?: OffsetRange): string {
+	public getText(range?: OffsetRange): string {
 		const altText = this.altCells.map(cell => cell.altCell.altText).join(EOL);
 		return range ? range.substring(altText) : altText;
 	}

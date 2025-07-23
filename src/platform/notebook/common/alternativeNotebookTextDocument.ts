@@ -171,10 +171,10 @@ export class AlternativeNotebookTextDocument {
 		return range ? range.substring(altText) : altText;
 	}
 
-	public fromAltOffsetRange(offsetRange: OffsetRange): [NotebookCell, Range][] | undefined {
+	public fromAltOffsetRange(offsetRange: OffsetRange): [NotebookCell, Range][] {
 		const firstIdx = findLastIdxMonotonous(this.altCells, c => c.startOffset <= offsetRange.start);
 		if (firstIdx === -1) {
-			return;
+			return [];
 		}
 		const cells: [NotebookCell, Range][] = [];
 

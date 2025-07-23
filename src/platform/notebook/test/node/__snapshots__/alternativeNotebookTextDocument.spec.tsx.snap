@@ -373,3 +373,15 @@ print("Foo Bar")
 print("Bar Baz")
 print("Something Else")"
 `;
+
+exports[`Edit Notebook Tool > Cell Content Changes > Cells with multiple line (lf) > replace text in last cell 1`] = `
+"#%% vscode.cell [id=#VSC-ad3571c0] [language=python]
+print("Foo Bar")
+#%% vscode.cell [id=#VSC-bdb3864a] [language=python]
+print("Bar Baz")
+#%% vscode.cell [id=#VSC-8862d4f3] [language=python]
+print("Bye bye World")
+print("Foo Bar2")
+print("Bar Baz2")
+print("Something Else")"
+`;

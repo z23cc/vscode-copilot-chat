@@ -3,12 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { NotebookCell, NotebookDocument, NotebookDocumentContentChange, Selection, TextDocument, TextDocumentContentChangeEvent, TextEditor } from 'vscode';
+import type { NotebookCell, NotebookDocument, NotebookDocumentContentChange, TextDocument, TextDocumentContentChangeEvent, TextEditor } from 'vscode';
 import { coalesce } from '../../../util/vs/base/common/arrays';
 import { findLastIdxMonotonous } from '../../../util/vs/base/common/arraysFind';
 import { StringEdit } from '../../../util/vs/editor/common/core/edits/stringEdit';
 import { OffsetRange } from '../../../util/vs/editor/common/core/ranges/offsetRange';
-import { EndOfLine, NotebookCellKind, Range, Position as VSCodePosition } from '../../../vscodeTypes';
+import { NotebookCellKind, Range, Position as VSCodePosition } from '../../../vscodeTypes';
 import { stringEditFromTextContentChange } from '../../editing/common/edit';
 import { PositionOffsetTransformer } from '../../editing/common/positionOffsetTransformer';
 import { generateCellTextMarker, getBlockComment, getLineCommentStart } from './alternativeContentProvider.text';
@@ -20,7 +20,6 @@ class AlternativeNotebookCellTextDocument {
 	private readonly positionTransformer: PositionOffsetTransformer;
 	private readonly crlfTranslator: CrLfOffsetTranslator;
 	public readonly lineCount: number;
-	// private _originalTextWithPreservedEOL?: string;
 	public static fromNotebookCell(cell: NotebookCell, blockComment: [string, string], lineCommentStart: string): AlternativeNotebookCellTextDocument {
 		const summary = summarize(cell);
 		const cellMarker = generateCellTextMarker(summary, lineCommentStart);
@@ -39,9 +38,7 @@ class AlternativeNotebookCellTextDocument {
 	) {
 		this.crlfTranslator = new CrLfOffsetTranslator(cell.document.getText(), cell.document.eol);
 		this.positionTransformer = new PositionOffsetTransformer(`${prefix}${code}${suffix}`);
-		// this.positionTransformer.
 		this.lineCount = this.positionTransformer.getLineCount();
-		// this._originalTextWithPreservedEOL = cell.document.getText() !== code ? cell.document.getText() : undefined;
 	}
 
 	public normalizeEdits(edits: readonly TextDocumentContentChangeEvent[]): TextDocumentContentChangeEvent[] {
@@ -58,11 +55,6 @@ class AlternativeNotebookCellTextDocument {
 		});
 	}
 
-	// public withTextChanges(events: readonly TextDocumentContentChangeEvent[]): AlternativeNotebookCellTextDocument {
-	// 	const edit = editFromTextDocumentContentChangeEvents(events);
-	// 	return this.withTextEdit(edit);
-	// }
-
 	public withTextEdit(edit: StringEdit): AlternativeNotebookCellTextDocument {
 		const newCode = edit.apply(this.code);
 		return new AlternativeNotebookCellTextDocument(this.cell, this.blockComment, this.lineCommentStart, newCode, this.prefix, this.suffix);
@@ -75,7 +67,6 @@ class AlternativeNotebookCellTextDocument {
 	public toAltOffsetRange(range: Range): OffsetRange {
 		// Remove the lines we've added for the cell marker and block comments
 		const extraLinesAdded = this.cell.kind === NotebookCellKind.Markup ? 2 : 1;
-		// VS Code positions are 0 based, and our transformer works with 1 based positions.
 		const startOffset = this.positionTransformer.getOffset(new VSCodePosition(range.start.line + extraLinesAdded, range.start.character));
 		const endOffset = this.positionTransformer.getOffset(new VSCodePosition(range.end.line + extraLinesAdded, range.end.character));
 		return new OffsetRange(startOffset, endOffset);
@@ -84,7 +75,6 @@ class AlternativeNotebookCellTextDocument {
 	public toAltRange(range: Range): Range {
 		// Remove the lines we've added for the cell marker and block comments
 		const extraLinesAdded = this.cell.kind === NotebookCellKind.Markup ? 2 : 1;
-
 		return new Range(range.start.line + extraLinesAdded, range.start.character, range.end.line + extraLinesAdded, range.end.character);
 	}
 
@@ -126,11 +116,11 @@ function cellsBuilder<T>(cellItems: T[], altCelBuilder: (cellItem: T) => Alterna
 
 export class AlternativeNotebookTextDocument {
 	private readonly cellTextDocuments = new Map<TextDocument, NotebookCell>();
-	public static withoutMDCells(notebook: NotebookDocument) {
-		return AlternativeNotebookTextDocument.create(notebook, true);
+	public static create(notebook: NotebookDocument) {
+		return AlternativeNotebookTextDocument.createInstance(notebook, true);
 	}
 
-	private static create(notebook: NotebookDocument, excludeMarkdownCells: boolean): AlternativeNotebookTextDocument {
+	private static createInstance(notebook: NotebookDocument, excludeMarkdownCells: boolean): AlternativeNotebookTextDocument {
 		const blockComment = getBlockComment(notebook);
 		const lineCommentStart = getLineCommentStart(notebook);
 		const notebookCells = notebook.getCells().filter(cell => !excludeMarkdownCells || cell.kind !== NotebookCellKind.Markup);
@@ -138,70 +128,20 @@ export class AlternativeNotebookTextDocument {
 
 		return new AlternativeNotebookTextDocument(notebook, excludeMarkdownCells, blockComment, lineCommentStart, altCells);
 	}
-	private constructor(public readonly notebook: NotebookDocument,
-		private readonly excludeMarkdownCells: boolean,
+	public constructor(public readonly notebook: NotebookDocument,
+		public readonly excludeMarkdownCells: boolean,
 		private readonly blockComment: [string, string],
 		private readonly lineCommentStart: string,
-		private readonly altCells: { altCell: AlternativeNotebookCellTextDocument; startLine: number; startOffset: number }[]) {
+		public readonly altCells: { altCell: AlternativeNotebookCellTextDocument; startLine: number; startOffset: number }[]) {
 		for (const { altCell } of this.altCells) {
 			this.cellTextDocuments.set(altCell.cell.document, altCell.cell);
 		}
 	}
 
-	public withNotebookChangesx(events: readonly NotebookDocumentContentChange[]): AlternativeNotebookTextDocument {
-		return this.withNotebookChangesAndEdit(events)[0];
+	public withNotebookChanges(events: readonly NotebookDocumentContentChange[]): AlternativeNotebookTextDocument {
+		return withNotebookChangesAndEdit(this, events)[0];
 	}
 
-	public withNotebookChangesAndEdit(events: readonly NotebookDocumentContentChange[]): [AlternativeNotebookTextDocument, StringEdit | undefined] {
-		if (!events.length) {
-			return [this, undefined];
-		}
-		let altCells = this.altCells.slice();
-		let edit = StringEdit.compose([]);
-		for (const event of events) {
-			const newCells = event.addedCells.map(cell => ({ altCell: AlternativeNotebookCellTextDocument.fromNotebookCell(cell, this.blockComment, this.lineCommentStart), startLine: 0, startOffset: 0 }));
-
-			const removedCells = altCells.slice(event.range.start, event.range.end);
-			let firstUnChangedCellIndex = -1;
-			if (event.range.isEmpty) {
-				firstUnChangedCellIndex = event.range.start === 0 ? -1 : event.range.start - 1;
-			} else {
-				firstUnChangedCellIndex = event.range.start === 0 ? -1 : event.range.start - 1;
-			}
-			const startOffset = firstUnChangedCellIndex === -1 ? 0 : altCells[firstUnChangedCellIndex].startOffset + altCells[firstUnChangedCellIndex].altCell.altText.length + EOL.length;
-			let offsetLength = removedCells.map((cell) => cell.altCell.altText).join(EOL).length;
-			let newCellsContent = newCells.map((cell) => cell.altCell.altText).join(EOL);
-			if (startOffset !== 0) {
-				if (!(event.range.end < altCells.length)) {
-					newCellsContent = `${EOL}${newCellsContent}`;
-				}
-			}
-			// if we have some cells after the insertion, then we need to insert an EOL at the end.
-			if (event.range.end < altCells.length) {
-				if (newCellsContent) {
-					newCellsContent += EOL;
-				}
-				if (offsetLength) {
-					offsetLength += EOL.length;
-				}
-			}
-			edit = edit.compose(StringEdit.replace(new OffsetRange(startOffset, startOffset + offsetLength), newCellsContent));
-
-			altCells.splice(event.range.start, event.range.end - event.range.start, ...newCells);
-			altCells = cellsBuilder(altCells, cell => cell.altCell, this.blockComment, this.lineCommentStart);
-		}
-
-		const altDoc = new AlternativeNotebookTextDocument(this.notebook, this.excludeMarkdownCells, this.blockComment, this.lineCommentStart, altCells);
-		return [altDoc, edit];
-	}
-
-	public withCellChangesAndEdit(cellTextDoc: TextDocument, events: readonly TextDocumentContentChangeEvent[]): [AlternativeNotebookTextDocument, StringEdit | undefined] {
-		if (events.length === 0) {
-			return [this, undefined];
-		}
-		const edit = editFromNotebookCellTextDocumentContentChangeEvents(this, cellTextDoc, events);
-		return [this.withCellChanges(cellTextDoc, events), edit];
-	}
 
 	public withCellChanges(cellTextDoc: TextDocument, edit: StringEdit | readonly TextDocumentContentChangeEvent[]): AlternativeNotebookTextDocument {
 		if (edit instanceof StringEdit ? edit.isEmpty() : edit.length === 0) {
@@ -222,16 +162,9 @@ export class AlternativeNotebookTextDocument {
 		return this.cellTextDocuments.get(textDocument);
 	}
 
-	public get altText(): string {
-		return this.altCells.map(cell => cell.altCell.altText).join(EOL);
-	}
-
 	public getAltText(range?: OffsetRange): string {
-		return range ? range.substring(this.altText) : this.altText;
-	}
-
-	public toAltSelection(cell: NotebookCell, selections: Selection[]): OffsetRange[] {
-		return this.toAltOffsetRange(cell, selections);
+		const altText = this.altCells.map(cell => cell.altCell.altText).join(EOL);
+		return range ? range.substring(altText) : altText;
 	}
 
 	public fromAltOffsetRange(offsetRange: OffsetRange): [NotebookCell, Range][] | undefined {
@@ -257,30 +190,6 @@ export class AlternativeNotebookTextDocument {
 
 		return cells;
 	}
-
-	projectVisibleRanges(visibleTextEditors: readonly TextEditor[]): OffsetRange[] {
-		const visibleEditors = new Map(visibleTextEditors.map(editor => ([editor.document, editor] as const)));
-		const visibleCells = this.notebook.getCells().filter(cell => visibleEditors.has(cell.document));
-		return visibleCells.flatMap(cell => {
-			const editor = visibleEditors.get(cell.document);
-			if (editor) {
-				return this.toAltOffsetRange(cell, editor.visibleRanges);
-			}
-			return [];
-		});
-	}
-
-	// projectSelections(): OffsetRange[] {
-	// 	const visibleEditors = new Map(window.visibleTextEditors.map(editor => ([editor.document, editor] as const)));
-	// 	const visibleCells = this.notebook.getCells().filter(cell => visibleEditors.has(cell.document));
-	// 	return visibleCells.flatMap(cell => {
-	// 		const editor = visibleEditors.get(cell.document);
-	// 		if (editor) {
-	// 			return this.projectRange(cell, editor.visibleRanges);
-	// 		}
-	// 		return [];
-	// 	});
-	// }
 
 	public toAltOffsetRange(cell: NotebookCell, ranges: readonly Range[]): OffsetRange[] {
 		let offset = 0;
@@ -315,10 +224,58 @@ export class AlternativeNotebookTextDocument {
 	}
 }
 
+function withNotebookChangesAndEdit(altDoc: AlternativeNotebookTextDocument, events: readonly NotebookDocumentContentChange[]): [AlternativeNotebookTextDocument, StringEdit | undefined] {
+	if (!events.length) {
+		return [altDoc, undefined];
+	}
+	let altCells = altDoc.altCells.slice();
+	let edit = StringEdit.empty;
+	const blockComment = getBlockComment(altDoc.notebook);
+	const lineCommentStart = getLineCommentStart(altDoc.notebook);
+	for (const event of events) {
+		const newCells = event.addedCells.map(cell => ({ altCell: AlternativeNotebookCellTextDocument.fromNotebookCell(cell, blockComment, lineCommentStart), startLine: 0, startOffset: 0 }));
+
+		const removedCells = altCells.slice(event.range.start, event.range.end);
+		let firstUnChangedCellIndex = -1;
+		if (event.range.isEmpty) {
+			firstUnChangedCellIndex = event.range.start === 0 ? -1 : event.range.start - 1;
+		} else {
+			firstUnChangedCellIndex = event.range.start === 0 ? -1 : event.range.start - 1;
+		}
+		const startOffset = firstUnChangedCellIndex === -1 ? 0 : altCells[firstUnChangedCellIndex].startOffset + altCells[firstUnChangedCellIndex].altCell.altText.length + EOL.length;
+		let offsetLength = removedCells.map((cell) => cell.altCell.altText).join(EOL).length;
+		let newCellsContent = newCells.map((cell) => cell.altCell.altText).join(EOL);
+		if (startOffset !== 0) {
+			if (!(event.range.end < altCells.length)) {
+				newCellsContent = `${EOL}${newCellsContent}`;
+			}
+		}
+		// if we have some cells after the insertion, then we need to insert an EOL at the end.
+		if (event.range.end < altCells.length) {
+			if (newCellsContent) {
+				newCellsContent += EOL;
+			}
+			if (offsetLength) {
+				offsetLength += EOL.length;
+			}
+		}
+		edit = edit.compose(StringEdit.replace(new OffsetRange(startOffset, startOffset + offsetLength), newCellsContent));
+
+		altCells.splice(event.range.start, event.range.end - event.range.start, ...newCells);
+		altCells = cellsBuilder(altCells, cell => cell.altCell, blockComment, lineCommentStart);
+	}
+
+	altDoc = new AlternativeNotebookTextDocument(altDoc.notebook, altDoc.excludeMarkdownCells, blockComment, lineCommentStart, altCells);
+	return [altDoc, edit];
+}
+
 export function editFromNotebookCellTextDocumentContentChangeEvents(notebook: AlternativeNotebookTextDocument, cellTextDocument: TextDocument, events: readonly TextDocumentContentChangeEvent[]): StringEdit {
 	const replacementsInApplicationOrder = toAltCellTextDocumentContentChangeEvents(notebook, cellTextDocument, events);
-
 	return stringEditFromTextContentChange(replacementsInApplicationOrder);
+}
+
+export function editFromNotebookChangeEvents(notebook: AlternativeNotebookTextDocument, events: readonly NotebookDocumentContentChange[]): StringEdit | undefined {
+	return withNotebookChangesAndEdit(notebook, events)[1];
 }
 
 export function toAltCellTextDocumentContentChangeEvents(notebook: AlternativeNotebookTextDocument, cellTextDocument: TextDocument, events: readonly TextDocumentContentChangeEvent[]): TextDocumentContentChangeEvent[] {
@@ -342,3 +299,105 @@ export function toAltCellTextDocumentContentChangeEvents(notebook: AlternativeNo
 		} as typeof e;
 	}));
 }
+
+export function fromAltTextDocumentContentChangeEvents(notebook: AlternativeNotebookTextDocument, events: readonly TextDocumentContentChangeEvent[]): [NotebookCell, TextDocumentContentChangeEvent[]][] {
+	if (!events.length) {
+		return [];
+	}
+
+	// Map to collect changes per cell
+	const cellChanges = new Map<NotebookCell, TextDocumentContentChangeEvent[]>();
+
+	for (const event of events) {
+		const altRange = new OffsetRange(event.rangeOffset, event.rangeOffset + event.rangeLength);
+		const cellRanges = notebook.fromAltOffsetRange(altRange);
+
+		if (!cellRanges?.length) {
+			continue;
+		}
+
+		// Handle the case where a single alt document change affects multiple cells
+		let textOffset = 0;
+		const eventText = event.text;
+
+		for (let i = 0; i < cellRanges.length; i++) {
+			const [cell, cellRange] = cellRanges[i];
+
+			// Calculate the portion of the text that applies to this cell
+			let cellText = '';
+			if (cellRanges.length === 1) {
+				// Single cell case - use entire text
+				cellText = eventText;
+			} else if (i === cellRanges.length - 1) {
+				// Last cell in multi-cell change
+				cellText = eventText.substring(textOffset);
+			} else {
+				// First or middle cell in multi-cell change
+				// For simplicity, split text evenly or use line breaks as boundaries
+				const remainingText = eventText.substring(textOffset);
+				const nextLineBreak = remainingText.indexOf(EOL);
+				if (nextLineBreak !== -1) {
+					cellText = remainingText.substring(0, nextLineBreak + EOL.length);
+					textOffset += cellText.length;
+				} else {
+					cellText = remainingText;
+					textOffset = eventText.length;
+				}
+			}
+
+			// Convert EOL back to cell's line ending format
+			const cellEol = cell.document.eol === 2 ? '\r\n' : '\n'; // EndOfLine.CRLF = 2, EndOfLine.LF = 1
+			const convertedText = cellText.replace(new RegExp(EOL, 'g'), cellEol);
+
+			// Calculate rangeOffset for the cell
+			const cellDoc = cell.document;
+			let rangeOffset = 0;
+			for (let line = 0; line < cellRange.start.line; line++) {
+				rangeOffset += cellDoc.lineAt(line).text.length + (cellDoc.eol === 2 ? 2 : 1);
+			}
+			rangeOffset += cellRange.start.character;
+
+			// Calculate rangeLength for the cell
+			let rangeLength = 0;
+			if (cellRange.start.line === cellRange.end.line) {
+				rangeLength = cellRange.end.character - cellRange.start.character;
+			} else {
+				// Multi-line range
+				rangeLength = cellDoc.lineAt(cellRange.start.line).text.length - cellRange.start.character + (cellDoc.eol === 2 ? 2 : 1);
+				for (let line = cellRange.start.line + 1; line < cellRange.end.line; line++) {
+					rangeLength += cellDoc.lineAt(line).text.length + (cellDoc.eol === 2 ? 2 : 1);
+				}
+				rangeLength += cellRange.end.character;
+			}
+
+			// Create the cell-specific change event
+			const cellChangeEvent: TextDocumentContentChangeEvent = {
+				range: cellRange,
+				rangeLength: rangeLength,
+				rangeOffset: rangeOffset,
+				text: convertedText
+			};
+
+			// Add to the map
+			if (!cellChanges.has(cell)) {
+				cellChanges.set(cell, []);
+			}
+			cellChanges.get(cell)!.push(cellChangeEvent);
+		}
+	}
+
+	return Array.from(cellChanges.entries());
+}
+
+export function projectVisibleRanges(altNotebook: AlternativeNotebookTextDocument, visibleTextEditors: readonly TextEditor[]): OffsetRange[] {
+	const visibleEditors = new Map(visibleTextEditors.map(editor => ([editor.document, editor] as const)));
+	const visibleCells = altNotebook.notebook.getCells().filter(cell => visibleEditors.has(cell.document));
+	return visibleCells.flatMap(cell => {
+		const editor = visibleEditors.get(cell.document);
+		if (editor) {
+			return altNotebook.toAltOffsetRange(cell, editor.visibleRanges);
+		}
+		return [];
+	});
+}
+

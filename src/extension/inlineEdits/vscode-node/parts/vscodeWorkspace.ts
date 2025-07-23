@@ -11,6 +11,7 @@ import { DocumentId } from '../../../../platform/inlineEdits/common/dataTypes/do
 import { LanguageId } from '../../../../platform/inlineEdits/common/dataTypes/languageId';
 import { EditReason } from '../../../../platform/inlineEdits/common/editReason';
 import { IObservableDocument, ObservableWorkspace, StringEditWithReason } from '../../../../platform/inlineEdits/common/observableWorkspace';
+import { AlternativeNotebookTextDocument, editFromNotebookCellTextDocumentContentChangeEvents } from '../../../../platform/notebook/common/alternativeNotebookTextDocument';
 import { IExperimentationService } from '../../../../platform/telemetry/common/nullExperimentationService';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry';
 import { IWorkspaceService } from '../../../../platform/workspace/common/workspaceService';
@@ -26,8 +27,6 @@ import { StringEdit, StringReplacement } from '../../../../util/vs/editor/common
 import { OffsetRange } from '../../../../util/vs/editor/common/core/ranges/offsetRange';
 import { StringText } from '../../../../util/vs/editor/common/core/text/abstractText';
 import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
-import { isEqual } from '../../../../util/vs/base/common/resources';
-import { AlternativeNotebookTextDocument, editFromNotebookCellTextDocumentContentChangeEvents } from '../../../../platform/notebook/common/alternativeNotebookTextDocument';
 
 export class VSCodeWorkspace extends ObservableWorkspace implements IDisposable {
 	private readonly _openDocuments = observableValue<readonly IVSCodeObservableDocument[], { added: readonly IVSCodeObservableDocument[]; removed: readonly IVSCodeObservableDocument[] }>(this, []);
@@ -66,7 +65,7 @@ export class VSCodeWorkspace extends ObservableWorkspace implements IDisposable 
 		}));
 
 		this._store.add(workspace.onDidOpenNotebookDocument(doc => {
-			const altDoc = AlternativeNotebookTextDocument.withoutMDCells(doc);
+			const altDoc = AlternativeNotebookTextDocument.create(doc);
 			this._altNotebookDoc.set(doc, altDoc);
 		}));
 
@@ -114,10 +113,10 @@ export class VSCodeWorkspace extends ObservableWorkspace implements IDisposable 
 			const edit = editFromNotebookCellTextDocumentContentChangeEvents(altDoc, e.document, altDocChanges);
 			const editWithReason = new StringEditWithReason(edit.replacements, EditReason.create(e.detailedReason?.metadata as any));
 			// Update the alternative document with a new document.
-			this._altNotebookDoc.set(altDoc.notebook, new AlternativeNotebookTextDocument(altDoc.notebook, true));
+			this._altNotebookDoc.set(altDoc.notebook, AlternativeNotebookTextDocument.create(altDoc.notebook));
 			transaction(tx => {
 				doc.languageId.set(LanguageId.create(e.document.languageId), tx);
-				doc.value.set(new StringText(altDoc.altText), tx, editWithReason);
+				doc.value.set(new StringText(altDoc.getAltText()), tx, editWithReason);
 				doc.version.set(altDoc.notebook.version, tx);
 			});
 		}));

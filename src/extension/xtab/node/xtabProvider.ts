@@ -9,7 +9,7 @@ import { ChatFetchError, ChatFetchResponseType, ChatLocation } from '../../../pl
 import { toTextParts } from '../../../platform/chat/common/globalStringUtils';
 import { ConfigKey, IConfigurationService, XTabProviderId } from '../../../platform/configuration/common/configurationService';
 import { IDiffService } from '../../../platform/diff/common/diffService';
-import { ProxyXtabEndpoint } from '../../../platform/endpoint/node/proxyXtabEndpoint';
+import { createProxyXtabEndpoint } from '../../../platform/endpoint/node/proxyXtabEndpoint';
 import { LanguageContextEntry, LanguageContextResponse } from '../../../platform/inlineEdits/common/dataTypes/languageContext';
 import * as xtabPromptOptions from '../../../platform/inlineEdits/common/dataTypes/xtabPromptOptions';
 import { InlineEditRequestLogContext } from '../../../platform/inlineEdits/common/inlineEditLogContext';
@@ -157,7 +157,7 @@ export class XtabProvider extends ChainedStatelessNextEditProvider {
 		}
 
 		const endpoint = this.getEndpoint();
-		logContext.setEndpointInfo(typeof endpoint.urlOrRequestMetadata === 'string' ? endpoint.urlOrRequestMetadata : endpoint.urlOrRequestMetadata.type, endpoint.model);
+		logContext.setEndpointInfo(typeof endpoint.urlOrRequestMetadata === 'string' ? endpoint.urlOrRequestMetadata : JSON.stringify(endpoint.urlOrRequestMetadata.type), endpoint.model);
 		telemetryBuilder.setModelName(endpoint.model);
 
 		const computeTokens = (s: string) => Math.floor(s.length / 4);
@@ -830,7 +830,7 @@ export class XtabProvider extends ChainedStatelessNextEditProvider {
 			? undefined
 			: this.configService.getExperimentBasedConfig(ConfigKey.Internal.InlineEditsXtabProviderModelName, this.expService);
 
-		return this.instaService.createInstance(ProxyXtabEndpoint, modelName);
+		return createProxyXtabEndpoint(this.instaService, modelName);
 	}
 
 	private getPredictedOutput(editWindowLines: string[], promptingStrategy: xtabPromptOptions.PromptingStrategy | undefined): Prediction | undefined {

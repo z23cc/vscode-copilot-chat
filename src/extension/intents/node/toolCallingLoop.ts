@@ -484,7 +484,7 @@ export abstract class ToolCallingLoop<TOptions extends IToolCallingLoopOptions =
 				chatResult,
 				hadIgnoredFiles: buildPromptResult.hasIgnoredFiles,
 				lastRequestMessages: buildPromptResult.messages,
-				availableToolCount: availableTools.length
+				availableTools,
 			};
 		}
 
@@ -492,7 +492,7 @@ export abstract class ToolCallingLoop<TOptions extends IToolCallingLoopOptions =
 			response: fetchResult,
 			hadIgnoredFiles: buildPromptResult.hasIgnoredFiles,
 			lastRequestMessages: buildPromptResult.messages,
-			availableToolCount: availableTools.length,
+			availableTools,
 			round: new ToolCallRound('', toolCalls, toolInputRetry, undefined, thinking)
 		};
 	}
@@ -661,7 +661,7 @@ export interface IToolCallSingleResult {
 	chatResult?: ChatResult; // TODO should just be metadata
 	hadIgnoredFiles: boolean;
 	lastRequestMessages: Raw.ChatMessage[];
-	availableToolCount: number;
+	availableTools: readonly LanguageModelToolInformation[];
 }
 
 export interface IToolCallLoopResult extends IToolCallSingleResult {

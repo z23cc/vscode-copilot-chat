@@ -72,7 +72,6 @@ export class ConsoleLog implements ILogTarget {
 
 export interface ILogService extends ILogger {
 	readonly _serviceBrand: undefined;
-	readonly logger: ILogger;
 	showPublicLog(preserveFocus?: boolean): void;
 }
 

@@ -62,7 +62,7 @@ describe('LogService', () => {
 	test('should support show methods', () => {
 		// These should not throw
 		logService.show();
-		logService.showPublicLog();
+		logService.show();
 		logService.show();
 	});
 });

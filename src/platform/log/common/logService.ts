@@ -72,7 +72,6 @@ export class ConsoleLog implements ILogTarget {
 
 export interface ILogService extends ILogger {
 	readonly _serviceBrand: undefined;
-	showPublicLog(preserveFocus?: boolean): void;
 }
 
 /**
@@ -106,10 +105,6 @@ export class LogServiceImpl extends Disposable implements ILogService {
 	) {
 		super();
 		this.logger = new LoggerImpl(logTargets);
-	}
-
-	showPublicLog(preserveFocus?: boolean): void {
-		this.logger.show(preserveFocus);
 	}
 
 	// Delegate logging methods directly to the internal logger
